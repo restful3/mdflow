@@ -1,15 +1,16 @@
 # mdflow — 세션 핸드오프 상태
 
-**작성일**: 2026-05-21 (1차) / 2026-05-21 갱신 (5차: M0 Task 1\~11 완료, Task 12 대기)
+**작성일**: 2026-05-21 (1차) / 2026-05-21 갱신 (6차: M0 Task 1\~11 완료, Task 12 url_fetch 진행 중 — 합의안 §3.2의 10단계 기준)
 **다음 세션 사용법**: 이 파일을 먼저 읽고, `docs/specs/2026-05-21-mdflow-design.md`(406줄), `docs/superpowers/plans/2026-05-21-m0-skeleton.md`, `docs/reviews/2026-05-21-url-handling-final-agreement.md` 순으로 확인. 코드는 `git log --oneline`으로 진척 점검.
 
 ---
 
 ## 1. 한눈에 보기
 
-- **현재 단계**: M0 plan 실행 중 — **Task 1\~11 완료** (bootstrap → events → settings → format_detect → converters/base → text → registry → cache → capabilities → concurrency)
-- **다음 액션**: Task 12(`url_fetch`: 합의안 §3.2의 10단계 — URL 검증/SSRF/redirect/size cap) 진행
-- **테스트**: 97 passed in 0.36s (스위트 전체)
+- **현재 단계**: M0 plan 실행 중 — **Task 1\~11 완료**, **Task 12 url_fetch 진행 중** (합의안 §3.2 10단계 1:1 매핑)
+- **다음 액션**: url_fetch 구현 완료 후 Task 13(`ConversionService` — Cache+Registry+url_fetch 통합) 진행
+- **테스트**: 97 passed in 0.36s (스위트 전체; Task 12 추가 시 갱신 예정)
+- **Task 12 매핑**: 합의안 §3.2 단계 1=`validate_url`, 2=`_drop_fragment`, 3=`_enforce_ssrf`(IPv4·IPv6·metadata IP), 4=고정 UA+`Accept`, 5=redirect per-hop 재검증, 6=connect/read timeout, 7=streaming + max_bytes, 8=2xx 검증, 9=Content-Type/Disposition/path hint, 10=`FetchResult` 10필드
 - **PRD**: 406줄, URL 처리 v1 정책 반영
 - **Plan**: `docs/superpowers/plans/2026-05-21-m0-skeleton.md` (17 task, TDD)
 
