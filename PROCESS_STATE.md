@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (cache.write follow-up 리뷰 — #2 mkdtemp wrap ACCEPT+적용, #1 publish race DEFER M1)
+**최종 갱신**: 2026-05-22 (Task 14 완료 — FastAPI app factory + lifespan + /healthz + 메모 #10 url_policy_from_settings)
 
 ---
 
@@ -79,23 +79,20 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M0.F (Service & API)** 진행 중 — Task 13까지 완료, Task 14\~17 대기
-- **테스트**: 159 passed / 1 skipped (`.venv/bin/python -m pytest -q`)
+- **현재 phase**: **M0.F (Service & API)** 진행 중 — Task 14까지 완료, Task 15\~17 대기
+- **테스트**: 162 passed / 1 skipped (`.venv/bin/python -m pytest -q`)
 - **린트**: `ruff check` 통과
-- **git**: 24+ commits, master 브랜치, 태그 없음 (가장 최근 `4efc814 docs(state): introduce PROCESS_STATE.md as canonical state doc`)
+- **git**: 26+ commits, master 브랜치, 태그 없음 (가장 최근 `0f9b0f6 feat(m0): harden cache.write I/O paths (#5write + #6 + follow-up #2)`)
 - **Codex 리뷰 상태**:
   - 차단 3건 (#1, #2, #3) — 모두 ACCEPT + 코드 반영 + commit 완료
   - 권고 5건 — #4·#5read commit, #5write·#6 코드 반영 + **follow-up 라운드 완료**(`2026-05-22-m0-cache-write-mkdtemp-codex.md`): 추가 #2(mkdtemp OSError wrap) ACCEPT + 적용, 추가 #1(publish race) DEFER (M1); 커밋 보류, #7 DEFER (M1), #8 차단 TDD에 흡수
   - 메모 3건 — #9 DEFER (v1.1), #10 Task 14에서 처리, #11 DEFER (M2)
 - **다음 액션 (다음 1\~3)**:
-  1. 권고 #5write + #6 + follow-up #2(mkdtemp wrap) 묶음 커밋 (`feat(m0): wrap cache.write I/O errors and use unique mkdtemp` 패턴)
-  2. **Task 14** 진입: `src/mdflow/api/app.py` + `tests/api/test_app.py` (lifespan + `/healthz` + 메모 #10 `Settings → UrlPolicy` helper)
-  3. Task 15\~17 순차: admin endpoints → smoke test → `v0.0.1-m0` 태그
+  1. **Task 15** 진입: admin endpoints — `src/mdflow/api/admin.py` + `register_admin_routes(app)` 호출을 `create_app`에 추가. `/capabilities`, `/cache/{sha}` GET/DELETE, `/cache/purge`. TDD
+  2. **Task 16** smoke test (end-to-end skeleton 검증)
+  3. **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화
 
-작업 디렉토리에 사전 변경 파일 (커밋 보류) 잔존:
-
-- `src/mdflow/core/cache.py` (modified — #5write + #6 + follow-up #2 mkdtemp wrap, "last replace wins" 잘못된 invariant 주석 정정)
-- `tests/test_cache.py` (modified — 회귀 3종: write_text OSError wrap, mkdtemp OSError wrap, unique tmp dir per call)
+작업 디렉토리 깨끗 (Task 14 commit 직후 갱신 예정).
 
 ---
 
@@ -277,13 +274,14 @@ PRD 14섹션 구성:
 
 - [x] **Task 13** `ConversionService.convert(req, progress)` — bytes 입력 cache key 계산 → cache hit/miss → format_detect → registry.select → converter.convert → metadata 보강 → cache write. `ConvertRequest` / `ConvertResponse` dataclass + `ProgressCallback` 타입 alias
 - [x] **Task 13b** `url_pipeline.convert_from_url(url, policy, service, options, progress, transport)` — `fetch_url` → bytes → `service.convert`. `UrlConvertResponse(response, fetch dict)` 반환. 합의안 §3.7 핵심 케이스 (같은 bytes 두 다른 URL → cache 공유 + 응답별 fetch metadata) 명시 검증
-- [ ] **Task 14** FastAPI 앱 팩토리 + lifespan + `/healthz`
+- [x] **Task 14** FastAPI 앱 팩토리 + lifespan + `/healthz` (`feat(m0): FastAPI app factory + /healthz + lifespan` commit 예정)
   - 새 파일: `src/mdflow/api/app.py`, `tests/api/__init__.py`, `tests/api/test_app.py`
-  - lifespan 와이어: `Settings()` → `detect()` → `Registry() + TextConverter` → `Cache(settings.cache_dir)` → `ConcurrencyPool(caps.cpu_workers)` → `ConversionService(registry, cache)`. 모두 `app.state.*`
+  - lifespan 와이어: `Settings()` → `detect()` → `Registry() + TextConverter` → `Cache(settings.cache_dir)` → `ConcurrencyPool(caps.cpu_workers)` → `ConversionService(registry, cache)` → `url_policy_from_settings(settings)`. 모두 `app.state.*` (`started_at`/`settings`/`capabilities`/`registry`/`cache`/`pool`/`service`/`url_policy`)
   - `/healthz` → `{"ok": True, "uptime_s": ...}`
-  - 메모 #10 `Settings → UrlPolicy` helper 동시 추가 (lifespan wire-up에 필요)
-  - TDD: `test_healthz_returns_ok` + `test_app_lifespan_initializes_state` 먼저 fail → fastapi.testclient
-- [ ] **Task 15** Admin endpoints (`/capabilities`, `/cache/{sha}` GET / DELETE, `/cache/purge`)
+  - 메모 #10 `url_policy_from_settings(settings) -> UrlPolicy` helper 추가 (URL 6개 설정 → UrlPolicy, MB→bytes 변환). lifespan에서 `app.state.url_policy`로 boot 시 1회 구성
+  - **admin 라우트(`register_admin_routes`)는 Task 15로 분리** — 플랜 스니펫은 Task 14에 포함했으나 admin.py 미존재라 import 제거
+  - TDD: `test_healthz_returns_ok` + `test_app_lifespan_initializes_state` + `test_url_policy_from_settings_maps_fields` RED(`ModuleNotFoundError`) 확인 후 GREEN (3 passed)
+- [ ] **Task 15** Admin endpoints (`/capabilities`, `/cache/{sha}` GET / DELETE, `/cache/purge`) — `src/mdflow/api/admin.py` + `create_app`에 `register_admin_routes(app)` 추가
 
 ### 6.7 M0.G — Smoke & tag [PENDING]
 
@@ -319,7 +317,7 @@ PRD 14섹션 구성:
 **🟢 메모 3건 — 분류 확정**
 
 - [ ] **#9 DEFER (v1.1)** — SSRF DNS rebinding 완전 차단 (도메인 allowlist v1.1 항목과 묶음)
-- [ ] **#10** — `Settings → UrlPolicy` helper는 **Task 14에서 lifespan wire-up과 함께 추가** (deferred to next task)
+- [x] **#10** — `url_policy_from_settings(settings) -> UrlPolicy` helper를 Task 14에서 `api/app.py`에 추가 + lifespan에서 `app.state.url_policy`로 구성 완료. URL convert 경로(M1)가 소비
 - [ ] **#11 DEFER (M2)** — Registry first-wins → fallback chain 실행 모델
 
 ### Phase M0 — 이슈 / 노트 / 리스크 실현 기록
@@ -329,7 +327,7 @@ PRD 14섹션 구성:
 - [x] **R1 libmagic 시스템 의존성** — 실현됨. libmagic이 `text/plain`을 일부 비-텍스트 입력에 부여하는 over-classification 발견. **RESOLVED** `45e1f43 fix(m0): exclude text/plain from MIME map (libmagic over-classifies)`. M0 fixture 범위는 prefix probe로 자급. CI 환경 `libmagic` 설치 권고는 docs/dev에 명시 필요 (Task 17에서 처리)
 - [x] **R4 chardet 짧은 텍스트 정확도** — 실현됨. 20자 미만 cp949 fixture를 chardet이 인식 못함. **RESOLVED** `88ce246 fix(m0): lengthen cp949 fixture so chardet identifies the encoding`. **M1에서 `language_hint` 옵션으로 보강 예정.**
 - [ ] **R2 SSRF DNS rebinding** — M0는 best-effort `getaddrinfo` + IP literal 직접 검사로 1차 차단. **완전 차단은 v1.1 도메인 allowlist 항목 (Codex 메모 #9와 동일).**
-- [ ] **R3 `asyncio.Semaphore` 이벤트 루프 바인딩** — `ConcurrencyPool`을 lifespan 밖에서 만들면 deadlock 위험. **Task 14 진입 시 lifespan async 컨텍스트 내부에서만 생성하도록 반드시 재확인.** 테스트도 `asyncio.run()` 안에서 인스턴스화
+- [x] **R3 `asyncio.Semaphore` 이벤트 루프 바인딩** — **RESOLVED** Task 14에서 `ConcurrencyPool(cpu_workers=...)`을 `_lifespan` async 컨텍스트 내부에서 생성하도록 와이어. `app.state.pool`에 저장, `finally`에서 `pool.shutdown()`. TestClient의 lifespan 진입이 동일 이벤트 루프를 공유하므로 semaphore가 올바른 루프에 바인딩됨 (`test_app_lifespan_initializes_state` 통과)
 - [ ] **R5 `urlparse` 관대함** — Task 12 negative case 13개로 cover. 추가 강화 (IDNA·trailing dot 정규화)는 합의안에서 v1.1로 분류됨
 - [ ] **R6 캐시 동시 쓰기 경합** — 권고 #6 적용으로 `mkdtemp` unique tmp dir 사용. 변환 결과가 deterministic이므로 "마지막 replace 승"은 outcome상 무해
 
