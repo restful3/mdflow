@@ -136,6 +136,33 @@ def test_url_validation_failure_propagates_before_service_is_called(service):
     assert exc.value.code is ErrorCode.URL_INVALID
 
 
+def test_content_type_alone_drives_format_when_no_filename_hint(service):
+    """Codex blocker #2 slice 3 (2026-05-22): URL fetch with a path
+    that yields no filename, no Content-Disposition, and indeterminate
+    magic must still resolve via the agreement §3.2 step 9 hint chain:
+    magic > Content-Type > Content-Disposition filename > URL path.
+    """
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/plain; charset=utf-8"},
+            content=b"plain text body\n",
+        )
+
+    out = convert_from_url(
+        "https://example.com/",
+        policy=_policy(),
+        service=service,
+        transport=httpx.MockTransport(handler),
+    )
+    assert out.fetch["filename_hint"] is None
+    assert out.fetch["content_type"] == "text/plain; charset=utf-8"
+    assert out.response.detected_format == "txt"
+    assert out.response.converter_name == "text-passthrough"
+    assert out.response.result.markdown == "plain text body\n"
+
+
 def test_options_flow_into_cache_key(service):
     def handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"hi", headers={"content-type": "text/plain"})

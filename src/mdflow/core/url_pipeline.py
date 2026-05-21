@@ -66,6 +66,7 @@ def convert_from_url(
         data=fetched.data,
         filename_hint=fetched.filename_hint,
         options=options or {},
+        content_type_hint=fetched.content_type,
     )
     response = service.convert(req, progress=progress)
     return UrlConvertResponse(response=response, fetch=_fetch_metadata(fetched))
