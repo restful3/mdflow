@@ -9,6 +9,17 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Request
 
+from mdflow.core.errors import MdflowError
+
+
+def _mdflow_http_error(e: MdflowError) -> HTTPException:
+    # Surface a normalized MdflowError as a structured 503 (these codes are
+    # retryable, e.g. CACHE_IO_ERROR) instead of leaking a raw 500.
+    return HTTPException(
+        status_code=503,
+        detail={"code": e.code.value, "message": e.message, "retryable": e.retryable},
+    )
+
 
 def register_admin_routes(app: FastAPI) -> None:
     @app.get("/capabilities")
@@ -28,6 +39,8 @@ def register_admin_routes(app: FastAPI) -> None:
             entry = request.app.state.cache.read(sha256)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+        except MdflowError as e:
+            raise _mdflow_http_error(e) from e
         if entry is None:
             raise HTTPException(status_code=404, detail="cache miss")
         return {

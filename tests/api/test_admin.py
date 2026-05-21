@@ -25,6 +25,26 @@ def test_cache_get_unknown_returns_404():
     with TestClient(app) as client:
         r = client.get("/cache/" + "a" * 64)
     assert r.status_code == 404
+    assert r.json()["detail"] == "cache miss"
+
+
+def test_cache_get_corrupt_meta_returns_503():
+    """Codex M0-api review #1: Cache.read() raises MdflowError(CACHE_IO_ERROR)
+    on a corrupt meta.json; the admin route must map it to a structured 503
+    (retryable) instead of leaking a raw 500.
+    """
+    app = create_app()
+    with TestClient(app) as client:
+        sha = "d" * 64
+        entry = app.state.cache.root / sha
+        entry.mkdir(parents=True)
+        (entry / "result.md").write_text("# x", encoding="utf-8")
+        (entry / "meta.json").write_text("{not valid json", encoding="utf-8")
+        r = client.get(f"/cache/{sha}")
+    assert r.status_code == 503
+    detail = r.json()["detail"]
+    assert detail["code"] == "CACHE_IO_ERROR"
+    assert detail["retryable"] is True
 
 
 def test_cache_get_invalid_sha_returns_400():
@@ -67,6 +87,7 @@ def test_cache_delete_unknown_returns_404():
     with TestClient(app) as client:
         r = client.delete("/cache/" + "c" * 64)
     assert r.status_code == 404
+    assert r.json()["detail"] == "cache miss"
 
 
 def test_cache_purge_clears_all():

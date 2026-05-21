@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (Task 16 완료 — M0 integration smoke test; 남은 것은 Task 14\~17 묶음 Codex 리뷰 + Task 17 태그)
+**최종 갱신**: 2026-05-22 (Task 14\~17 묶음 Codex 리뷰 완료 — 차단 0, 권고 #1부분+#2 적용, #1delete/purge·#3·#4 DEFER M1; 남은 것은 Task 17 태그)
 
 ---
 
@@ -79,20 +79,21 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M0.G** — Task 16(smoke)까지 완료. 남은 것은 **Task 14\~17 묶음 Codex 리뷰** → Task 17 태그
-- **테스트**: 172 passed / 1 skipped (`.venv/bin/python -m pytest -q`; smoke 3개 포함, integration 마커)
+- **현재 phase**: **M0.G** — Task 16 + Task 14\~17 묶음 Codex 리뷰 완료. **남은 것은 Task 17 태그뿐**
+- **테스트**: 175 passed / 1 skipped (`.venv/bin/python -m pytest`; smoke 3개 포함, integration 마커)
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
-- **git**: 28+ commits, master 브랜치, 태그 없음 (가장 최근 `2aaa1c9 feat(m0): admin endpoints /capabilities + /cache/* (Task 15)`)
+- **git**: 29+ commits, master 브랜치, 태그 없음 (가장 최근 `216f268 test(m0): integration smoke (...)`)
+- **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건** (M0 태그 가능). 권고 #1(부분: admin GET MdflowError→503)·#2(unknown 404 body assert) 적용 완료. #1(delete/purge OSError)·#3(pool↔service 연결)·#4(shutdown in-flight 정책) DEFER M1
 - **Codex 리뷰 상태**:
   - 차단 3건 (#1, #2, #3) — 모두 ACCEPT + 코드 반영 + commit 완료
   - 권고 5건 — #4·#5read commit, #5write·#6 코드 반영 + **follow-up 라운드 완료**(`2026-05-22-m0-cache-write-mkdtemp-codex.md`): 추가 #2(mkdtemp OSError wrap) ACCEPT + 적용, 추가 #1(publish race) DEFER (M1); 커밋 보류, #7 DEFER (M1), #8 차단 TDD에 흡수
   - 메모 3건 — #9 DEFER (v1.1), #10 Task 14에서 처리, #11 DEFER (M2)
 - **다음 액션 (다음 1\~3)**:
-  1. **Task 14\~17 묶음 Codex 리뷰** (M0 완료 직전 — 결정대로). 대상: `api/app.py`, `api/admin.py`, `tests/api/*`, `tests/test_m0_smoke.py`
-  2. 리뷰 ACCEPT 반영 (있으면)
-  3. **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화 (PROCESS_STATE M0 DONE 표기 + M1 plan 대기)
+  1. **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화 (PROCESS_STATE M0 DONE 표기 + M1 plan 대기). 리뷰 차단 0건 + 권고 #1/#2 반영 완료라 태그 준비됨
+  2. M1 plan 작성 (`writing-plans` 스킬) — docx/pptx/xlsx/html 컨버터 + SSE `/convert` + `convert_url` 통합
+  3. (M1 진입)
 
-작업 디렉토리 깨끗 (Task 16 commit 직후 갱신 예정).
+작업 디렉토리에 권고 #1/#2 반영분 (커밋 보류): `src/mdflow/api/admin.py`, `tests/api/test_admin.py`, `PROCESS_STATE.md`
 
 ---
 
@@ -287,7 +288,13 @@ PRD 14섹션 구성:
 ### 6.7 M0.G — Smoke & tag [PENDING]
 
 - [x] **Task 16** M0 integration smoke test — `tests/test_m0_smoke.py` (`pytest.mark.integration`). service text passthrough → cache hit, `/capabilities` cache stats 반영, `validate_url("file://...")` → URL_INVALID, `/healthz`. 모듈 autouse fixture로 `MDFLOW_CACHE_DIR` 격리 (tests/ 루트라 tests/api/conftest.py 미적용). 조립된 골격 검증이라 새 production 코드 없음 — 즉시 통과 정상
-- [ ] **Task 14\~17 묶음 Codex 리뷰** — M0 완료 직전(Task 17 태그 전) 1회. 사용자 결정 2026-05-22: per-task가 아니라 Task 1\~13 관행처럼 API 표면(M0.F+M0.G)을 한 묶음으로 리뷰. Task 14·15는 같은 `api/app.py`/`admin.py`를 건드리므로 개별 리뷰는 중복
+- [x] **Task 14\~17 묶음 Codex 리뷰** — `docs/reviews/2026-05-22-m0-api-surface-codex.md`. Codex 자체 검증: `pytest tests/api tests/test_m0_smoke.py` 13 passed, ruff clean. **차단 0건** (M0 태그 가능 판정). 분류:
+  - [x] **권고 #1 (부분 ACCEPT)** — admin `GET /cache/{sha}`가 `Cache.read()`의 `MdflowError(CACHE_IO_ERROR)`(오염 meta.json)를 catch 안 해 raw 500 누출. `admin.py`에 `_mdflow_http_error()` helper 추가 → 구조화 503 `{code, message, retryable}`. 사용자 결정 status=503 (retryable 의미). 회귀: `test_cache_get_corrupt_meta_returns_503`. delete에는 미적용 — `Cache.delete`는 MdflowError를 안 올림(일어날 수 없는 핸들링 금지)
+  - [x] **권고 #2 (ACCEPT)** — unknown-sha 404 테스트(get/delete)에 `r.json()["detail"] == "cache miss"` assert 추가 → 라우트 부재 404와 cache-miss 404 구분
+  - [ ] **권고 #1 잔여 (DEFER M1)** — `Cache.delete`/`purge`의 raw `OSError` 정규화 (§7 M1 항목)
+  - [ ] **권고 #3 (DEFER M1)** — `ConcurrencyPool` ↔ `ConversionService` 연결 (§7 M1 항목)
+  - [ ] **권고 #4 (DEFER M1)** — shutdown in-flight 대기 정책 (§7 M1 항목)
+  - 메모 1\~5: 전부 확인(action 없음). lifespan composition root·url_policy 매핑·테스트 격리·400/404 분기 일관성 모두 적절 판정
 - [ ] **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화
 
 ### 6.8 Codex 리뷰 트랙 (Task 1\~13)
@@ -358,6 +365,9 @@ PRD 14섹션 구성:
 - [ ] `language_hint` 옵션 (Phase M0 R4 흡수)
 - [ ] URL fetch temp file streaming (Codex 권고 #7 흡수)
 - [ ] Cache publish atomicity 강화 (M0 follow-up #1 흡수) — sha별 lock 또는 first-writer-wins semantics 중 택일 + 회귀 테스트 (barrier 있는 동시 same-sha write)
+- [ ] Cache `delete`/`purge`의 raw `OSError` → `CACHE_IO_ERROR` 정규화 + admin 매핑 (M0 API 리뷰 권고 #1 잔여분). write/read는 이미 wrap됨
+- [ ] `ConcurrencyPool` ↔ `ConversionService` 연결 결정 (M0 API 리뷰 권고 #3) — `/convert` SSE handler가 `app.state.pool`을 직접 쓸지 service 생성자에 주입할지. 안 하면 CPU executor/GPU semaphore 우회됨
+- [ ] shutdown 정책 (M0 API 리뷰 권고 #4) — CPU 변환이 executor에서 돌면 `shutdown(wait=False, cancel_futures=True)`가 in-flight를 안 기다림. Uvicorn shutdown lifecycle과 "끝까지 대기 vs 중단" 정책 정하고 테스트
 - [ ] 골든 출력 파일 (`tests/golden/<converter>/<fixture>.md`) + diff 리뷰 강제
 
 ### Phase M1 — 이슈 / 노트 (사전)
