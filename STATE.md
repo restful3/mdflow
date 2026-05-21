@@ -1,16 +1,17 @@
 # mdflow — 세션 핸드오프 상태
 
-**작성일**: 2026-05-21 (1차) / 2026-05-21 갱신 (2차: URL 처리 합의 적용 후)
-**다음 세션 사용법**: 이 파일을 먼저 읽고, `docs/specs/2026-05-21-mdflow-design.md`(406줄)와 `docs/reviews/2026-05-21-url-handling-final-agreement.md`를 읽은 뒤 사용자에게 "다음 단계는 implementation plan 작성인가요?" 확인 → 승인이면 `writing-plans` 스킬로 진행.
+**작성일**: 2026-05-21 (1차) / 2026-05-21 갱신 (4차: M0 Task 1\~10 완료, Task 11 대기)
+**다음 세션 사용법**: 이 파일을 먼저 읽고, `docs/specs/2026-05-21-mdflow-design.md`(406줄), `docs/superpowers/plans/2026-05-21-m0-skeleton.md`, `docs/reviews/2026-05-21-url-handling-final-agreement.md` 순으로 확인. 코드는 `git log --oneline`으로 진척 점검.
 
 ---
 
 ## 1. 한눈에 보기
 
-- **현재 단계**: PRD 작성 + URL 처리 코덱스 합의 적용 완료 → **implementation plan 대기**
-- **다음 액션**: 사용자 확인 후 `writing-plans` 스킬로 M0(또는 M0+M1) implementation plan 작성
-- **코드 0건**, git init 안 됨, 디렉터리 구조만 존재
-- **PRD**: 406줄(53줄 증가), URL 처리 v1 정책 11개 섹션 패치 반영
+- **현재 단계**: M0 plan 실행 중 — **Task 1\~10 완료** (bootstrap → events → settings → format_detect → converters/base → text → registry → cache → capabilities)
+- **다음 액션**: Task 11(`ConcurrencyPool`: GPU 세마포어=1 + CPU ThreadPool) 진행
+- **테스트**: 92 passed in 0.19s (스위트 전체)
+- **PRD**: 406줄, URL 처리 v1 정책 반영
+- **Plan**: `docs/superpowers/plans/2026-05-21-m0-skeleton.md` (17 task, TDD)
 
 ## 2. 프로젝트 컨텍스트
 
@@ -84,11 +85,18 @@
 8. `codex-peer-reviewer` 스킬로 4라운드 코덱스 합의 루프 진행 (Claude 검토 → Codex R1 사실 지적 6건 / 권고 11개 → Claude 메타리뷰 + Q1-Q3 → Codex R2 답변 + PRD 패치 11개 → Codex Final Agreement)
 9. **잔존 이견 0건 합의 도달.** 5개 산출물 `docs/reviews/`에 보존
 10. PRD에 합의된 패치 11개 적용 (§1.2, §5, §5.1, §6, §7, §8.1, §8.3, §9, §10, §11, §12, §13)
+11. M0 implementation plan 작성 (`docs/superpowers/plans/2026-05-21-m0-skeleton.md`, 17 TDD task + TL;DR phases/scope/risks)
+12. git init + 첫 커밋 (PRD + reviews + plan)
+13. **M0 Task 1\~10 TDD로 실행**:
+    - Task 1 bootstrap, Task 2 errors(15코드), Task 3 events(6 이벤트), Task 4 settings(MDFLOW_* 9개)
+    - Task 5 format_detect(ext+magic, magic 우선), Task 6 converters/base, Task 7 TextConverter(txt/md/csv)
+    - Task 8 Registry(register+select+list_formats), Task 9 Cache(sha256 atomic), Task 10 Capabilities(GPU detect+boot log)
+    - 각 task TDD 사이클(fail→impl→pass→ruff→commit). 일부는 작은 슬라이스로 분할하여 단계별 commit
+    - 두 곳에서 리스크 R4(chardet 짧은 텍스트), 그리고 libmagic over-classification 실현 → fix 커밋으로 처리
 
 ## 7. 미결 사항 (다음 세션에서 처리)
 
-- [ ] **git init + 첫 커밋 여부**: 사용자 결정 필요 (브레인스토밍 스킬은 commit 권장하나 사용자 명시 안 했음). 현재 PRD + 합의 산출물 5개가 커밋 후보
-- [ ] **첫 implementation plan 범위**: M0만(골격) vs M0+M1(골격+사무 포맷). 권고는 M0+M1 한 번에. URL fetch 계층은 M0에서 SSRF/검증 helper 포함, 실제 `convert_url`은 M1에서 통합
+- [ ] **M0 Task 11\~17 진행**: `ConcurrencyPool`(11) → `url_fetch`(12, 합의안 §3.2의 10단계 직접 반영) → `ConversionService`(13) → FastAPI `/healthz`(14) → admin endpoints(15) → smoke test(16) → 태그(17)
 - [ ] **PaperFlow 보안 이슈 시정**: 사용자가 "나중에 검토" 결정. 별도 세션에서 다룰 수 있음. 핵심 발견은 path traversal·SSRF·약한 기본값 (이전 세션 보고서 참조)
 - [ ] **URL 처리 v1.1 항목**: PRD §13에 4개 항목 등록됨 (SPA/Headless 대응, quality gate 고도화, 인증 fetch, 도메인 allowlist). 별도 시점에 v1.1 PRD로 분리 검토
 
