@@ -2,12 +2,12 @@
 
 Built incrementally; this file currently exposes only the events the
 service layer needs at the current milestone. Additional events
-(Progress, Cached, Done, Error) land in subsequent steps.
+(Cached, Done, Error) land in subsequent steps.
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _EventBase(BaseModel):
@@ -23,3 +23,9 @@ class Started(_EventBase):
 class Queued(_EventBase):
     reason: str
     position: int
+
+
+class Progress(_EventBase):
+    stage: str
+    pct: int = Field(ge=0, le=100)
+    detail: str = ""
