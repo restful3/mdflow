@@ -2,7 +2,7 @@
 
 Built incrementally; this file currently exposes only the events the
 service layer needs at the current milestone. Additional events
-(Cached, Done, Error) land in subsequent steps.
+(Done, Error) land in subsequent steps.
 """
 
 from __future__ import annotations
@@ -29,3 +29,8 @@ class Progress(_EventBase):
     stage: str
     pct: int = Field(ge=0, le=100)
     detail: str = ""
+
+
+class Cached(_EventBase):
+    sha256: str
+    cached_at: str  # ISO-8601 string; v1 uses string for SSE simplicity

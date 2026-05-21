@@ -1,9 +1,9 @@
-"""Pydantic SSE event models — incremental: Started, Queued, Progress."""
+"""Pydantic SSE event models — incremental: Started, Queued, Progress, Cached."""
 
 import pytest
 from pydantic import ValidationError
 
-from mdflow.core.events import Progress, Queued, Started
+from mdflow.core.events import Cached, Progress, Queued, Started
 
 
 def test_started_event_minimal():
@@ -39,6 +39,18 @@ def test_progress_event_clamps_pct_to_0_100():
 def test_progress_event_default_detail_is_empty():
     e = Progress(stage="parse", pct=10)
     assert e.detail == ""
+
+
+def test_cached_event_records_sha_and_timestamp():
+    e = Cached(sha256="b" * 64, cached_at="2026-05-21T10:00:00Z")
+    assert e.sha256 == "b" * 64
+    assert e.cached_at.endswith("Z")
+
+
+def test_cached_event_json_roundtrip():
+    e = Cached(sha256="d" * 64, cached_at="2026-05-21T10:00:00Z")
+    parsed = Cached.model_validate_json(e.model_dump_json())
+    assert parsed == e
 
 
 def test_started_event_json_roundtrip():
