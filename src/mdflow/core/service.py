@@ -1,9 +1,11 @@
 """ConversionService — entry point wiring cache, detection, and dispatch.
 
-Incremental: this slice handles bytes-in requests. URL input (fetch via
-`mdflow.core.url_fetch`) is owned by the API layer in Task 14, which
-converts a `{url}` request into a `ConvertRequest` (data + filename_hint
-+ fetch metadata) before calling `service.convert`.
+Incremental: this slice handles bytes-in requests. URL input is handled
+by `mdflow.core.url_pipeline.convert_from_url`, which calls `fetch_url`,
+builds a `ConvertRequest` (data + filename_hint + content_type_hint),
+invokes `service.convert`, and composes the fetch metadata into a
+sidecar `UrlConvertResponse.fetch` dict. The service itself does NOT
+read URL provenance; it stays bytes-in / response-out.
 """
 
 from __future__ import annotations
@@ -33,8 +35,6 @@ class ConvertRequest:
     # Explicit HTTP `Content-Type` header from a URL fetch (agreement
     # §3.2 step 9 hint chain). None for local-file inputs.
     content_type_hint: str | None = None
-    # Populated by the API layer when the input is a URL (Task 14).
-    fetch_metadata: dict[str, Any] | None = None
 
 
 @dataclass

@@ -110,6 +110,21 @@ def test_convert_passes_content_type_hint_to_detect_format(service: ConversionSe
     assert out.result.markdown == "plain text body\n"
 
 
+def test_convert_request_rejects_fetch_metadata_keyword():
+    """Codex recommendation #4 (2026-05-22): URL fetch metadata is
+    returned through `UrlConvertResponse.fetch` as a sidecar by
+    `convert_from_url`. `ConvertRequest.fetch_metadata` is a dead
+    field (no read or write anywhere) and is removed so the API
+    layer can't accidentally rely on it during Task 14 wire-up.
+    """
+    with pytest.raises(TypeError):
+        ConvertRequest(
+            data=b"x",
+            filename_hint=None,
+            fetch_metadata={"source_url": "https://example.com/"},
+        )
+
+
 def test_convert_progress_callback_invoked(service: ConversionService):
     seen: list[tuple[str, int]] = []
     service.convert(
