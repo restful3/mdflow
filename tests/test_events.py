@@ -1,9 +1,9 @@
-"""Pydantic SSE event models — incremental: Started, Queued, Progress, Cached, Done."""
+"""Pydantic SSE event models — full set: Started, Queued, Progress, Cached, Done, Error."""
 
 import pytest
 from pydantic import ValidationError
 
-from mdflow.core.events import Cached, Done, Progress, Queued, Started
+from mdflow.core.events import Cached, Done, Error, Progress, Queued, Started
 
 
 def test_started_event_minimal():
@@ -71,6 +71,18 @@ def test_done_event_default_metadata_is_per_instance():
     b = Done(markdown="b")
     a.metadata["k"] = 1
     assert b.metadata == {}
+
+
+def test_error_event_uses_code_string():
+    e = Error(code="URL_BLOCKED", message="private IP", retryable=False)
+    assert e.code == "URL_BLOCKED"
+    assert e.message == "private IP"
+    assert e.retryable is False
+
+
+def test_error_event_requires_all_fields():
+    with pytest.raises(ValidationError):
+        Error(code="X", message="m")  # type: ignore[call-arg]
 
 
 def test_started_event_json_roundtrip():

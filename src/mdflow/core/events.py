@@ -1,8 +1,6 @@
 """Pydantic event models for the SSE stream.
 
-Built incrementally; this file currently exposes only the events the
-service layer needs at the current milestone. Additional events
-(Error) land in a subsequent step.
+Full set of v1 events: Started, Queued, Progress, Cached, Done, Error.
 """
 
 from __future__ import annotations
@@ -42,3 +40,9 @@ class Done(_EventBase):
     markdown: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     assets: list[str] = Field(default_factory=list)
+
+
+class Error(_EventBase):
+    code: str
+    message: str
+    retryable: bool
