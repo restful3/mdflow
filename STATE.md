@@ -13,14 +13,14 @@
   - 🔴 차단 3건: 모두 ACCEPT (파일/합의안 대조로 사실 확인 완료)
     - **#1 DONE** — `5d53995 fix(m0): include detected_format in cache key`. detect_format을 cache lookup 이전으로 옮기고, `compute_cache_key(data, options, *, detected_format)`로 시그니처 확장. 회귀: `b"hello world\n"` `.txt` vs `.csv` distinct 출력
     - **#3 DONE** — `3e997d0 fix(m0): validate_url rejects malformed port`. `validate_url`에서 `parsed.port` 접근으로 ValueError를 `MdflowError(URL_INVALID)`로 wrap. 회귀: bad/-1/99999 parametrize 3건. CLAUDE.md "단순함이 먼저다" 원칙으로 fetch_url의 방어적 InvalidURL catch는 추가 안 함 (validate_url이 모든 진입점을 막음)
-    - **#2 진행 중** (3 슬라이스 예정):
+    - **#2 진행 중** (3 슬라이스 예정, 현재 2/3):
       - slice 1 DONE — `e096a7b feat(m0): detect_format accepts content_type_hint`. `_CT_TO_FORMAT`(+`text/plain`), `_content_type_format` 헬퍼, magic 부재 시 ct fallback. 회귀: `text/plain; charset=utf-8` + ext 없음 → `format=txt`, `source="content-type"`
-      - slice 2 TODO — `ConvertRequest`에 `content_type_hint` 필드 + `ConversionService.convert`에서 `detect_format`로 전달
+      - slice 2 DONE — `d55ec03 feat(m0): ConversionService forwards content_type_hint`. `ConvertRequest.content_type_hint: str|None=None` 필드 + `service.convert` → `detect_format(..., content_type_hint=...)` 전달. 회귀: service-level end-to-end (bytes+ct만으로 txt 변환). **Codex 리뷰 핸드오프 대기 (slice 3은 의도적으로 정지)**
       - slice 3 TODO — `convert_from_url`에서 fetched.content_type → ConvertRequest로 배선 + end-to-end 회귀 테스트 (URL fetch + Content-Type만으로 format 결정)
   - 🟡 권고 5건: #8(회귀 테스트)는 차단 TDD에 흡수 중, #10(Settings→UrlPolicy helper)는 Task 14에서 필요. #4/5/6/7은 차단 처리 후 별도 결정
   - 🟢 메모 3건: 모두 NOTED (v1.1/M1/M2 추후 작업)
-- **다음 액션**: blocker #2 slice 2 (`ConvertRequest`+service 배선) → slice 3 (url_pipeline 배선) → 권고 재판단 → Task 14
-- **테스트**: 153 passed, 1 skipped (blocker #2 slice 1 회귀 +1)
+- **다음 액션**: **blocker #2 slice 2 묶음 Codex 리뷰 핸드오프 대기** → 리뷰 후 slice 3 (url_pipeline 배선) → 권고 재판단 → Task 14
+- **테스트**: 154 passed, 1 skipped (blocker #2 slice 2 회귀 +1)
 - **Task 13 산출물 (2개 슬라이스)**:
   - `src/mdflow/core/service.py` — `ConversionService.convert(req, progress)`: bytes 입력 cache key 계산 → cache hit/miss → format_detect → registry.select → converter.convert → metadata 보강 → cache write. `ConvertRequest`/`ConvertResponse` dataclass + `ProgressCallback` 타입 alias
   - `src/mdflow/core/url_pipeline.py` — `convert_from_url(url, policy, service, options, progress, transport)` helper. `fetch_url` → bytes → `service.convert`. 반환 `UrlConvertResponse(response, fetch dict)`. 합의안 §3.7 핵심 케이스(같은 bytes 두 다른 URL → cache 공유 + 응답별 fetch metadata) 명시 검증
