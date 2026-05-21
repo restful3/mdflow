@@ -126,3 +126,18 @@ def test_detect_unknown_returns_unknown():
     result = detect_format(b"\x00\x01\x02noisy", filename_hint=None)
     assert result.format is None
     assert result.source == "unknown"
+
+
+def test_detect_uses_content_type_when_magic_and_ext_absent():
+    """Codex blocker #2 (2026-05-21): agreement §3.2 step 9 places
+    Content-Type between magic and filename in the hint chain. A URL
+    fetch with no path extension and indeterminate magic (plain text
+    body served as ``Content-Type: text/plain``) must still resolve.
+    """
+    result = detect_format(
+        b"plain text body\n",
+        filename_hint=None,
+        content_type_hint="text/plain; charset=utf-8",
+    )
+    assert result.format == "txt"
+    assert result.source == "content-type"

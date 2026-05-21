@@ -4,6 +4,10 @@ Policy (from PRD §5 step 2 + URL handling agreement §3.2 step 9):
 - magic bytes win when extension and magic disagree
 - agreement on a single format yields source="agreement"
 - magic-only yields source="magic"; extension-only yields source="ext"
+- when magic is absent, explicit HTTP Content-Type (`content_type_hint`)
+  beats filename extension (agreement §3.2 step 9: magic > Content-Type
+  > Content-Disposition filename > URL path extension). Source label
+  "content-type" is used in that branch.
 - unknown returns format=None with source="unknown"
 
 libmagic (python-magic) is consulted as a last-resort MIME probe when
@@ -43,6 +47,15 @@ _MIME_TO_FORMAT: dict[str, str] = {
     "application/xhtml+xml": "html",
 }
 
+# Used for the explicit HTTP `Content-Type` hint. Unlike the libmagic
+# path, `text/plain` here is accepted because the server (or fetch
+# layer) has positively asserted it — there is no auto-over-classify
+# risk like libmagic.
+_CT_TO_FORMAT: dict[str, str] = {
+    **_MIME_TO_FORMAT,
+    "text/plain": "txt",
+}
+
 _EXT_TO_FORMAT: dict[str, str] = {
     ".txt": "txt",
     ".md": "md",
@@ -65,6 +78,13 @@ def _ext_format(filename_hint: str | None) -> str | None:
         return None
     ext = PurePosixPath(filename_hint).suffix.lower()
     return _EXT_TO_FORMAT.get(ext)
+
+
+def _content_type_format(content_type_hint: str | None) -> str | None:
+    if not content_type_hint:
+        return None
+    media = content_type_hint.split(";", 1)[0].strip().lower()
+    return _CT_TO_FORMAT.get(media)
 
 
 def _magic_format(data: bytes) -> str | None:
@@ -91,7 +111,11 @@ def _magic_format(data: bytes) -> str | None:
     return None
 
 
-def detect_format(data: bytes, filename_hint: str | None) -> DetectionResult:
+def detect_format(
+    data: bytes,
+    filename_hint: str | None,
+    content_type_hint: str | None = None,
+) -> DetectionResult:
     ext = _ext_format(filename_hint)
     magic_fmt = _magic_format(data)
 
@@ -105,6 +129,10 @@ def detect_format(data: bytes, filename_hint: str | None) -> DetectionResult:
         )
     if magic_fmt:
         return DetectionResult(format=magic_fmt, source="magic")
+    # Magic absent — Content-Type beats filename hint per agreement §3.2 step 9.
+    ct = _content_type_format(content_type_hint)
+    if ct:
+        return DetectionResult(format=ct, source="content-type")
     if ext:
         return DetectionResult(format=ext, source="ext")
     return DetectionResult(format=None, source="unknown")
