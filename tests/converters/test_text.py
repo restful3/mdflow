@@ -31,11 +31,16 @@ def test_txt_passthrough_utf8():
 
 
 def test_txt_passthrough_cp949():
-    text = "안녕 mdflow"
+    # Use a longer Korean passage: chardet needs enough signal to identify
+    # the cp949/euc-kr family (see plan risk R4 — short-text accuracy).
+    text = (
+        "안녕하세요 mdflow 입니다. 이 문장은 한국어 인코딩 감지를 검증하기 위한 "
+        "충분히 긴 cp949 텍스트입니다. 가나다라마바사 아자차카타파하."
+    )
     data = text.encode("cp949")
     conv = TextConverter()
     out = conv.convert(_ctx(data, "txt", "b.txt"), lambda s, p: None)
-    assert "안녕" in out.markdown
+    assert "안녕하세요" in out.markdown
     # chardet may report cp949, euc-kr, or a close synonym
     assert out.metadata["encoding"].lower() in {"cp949", "euc-kr", "ks_c_5601-1987"}
 
