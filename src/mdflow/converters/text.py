@@ -1,10 +1,14 @@
-"""txt/md passthrough converter with encoding detection.
+"""txt/md/csv passthrough converter with encoding detection.
 
-Incremental: this slice covers txt and md. CSV → Markdown-table
-rendering lands in the follow-up step.
+Full v1 slice: txt and md decode as-is; csv renders as a Markdown
+table (header row + alignment row + body, rows padded/truncated to
+header width).
 """
 
 from __future__ import annotations
+
+import csv
+import io
 
 import chardet
 
@@ -17,7 +21,7 @@ from mdflow.converters.base import (
 
 class TextConverter:
     name = "text-passthrough"
-    formats: tuple[str, ...] = ("txt", "md")
+    formats: tuple[str, ...] = ("txt", "md", "csv")
     requires_gpu = False
 
     def can_handle(self, ctx: ConversionContext) -> bool:
@@ -26,11 +30,30 @@ class TextConverter:
     def convert(self, ctx: ConversionContext, progress: ProgressCallback) -> ConversionResult:
         progress("decode", 10)
         text, encoding = _decode(ctx.data)
+        if ctx.format == "csv":
+            progress("render", 50)
+            markdown = _csv_to_table(text)
+        else:
+            markdown = text
         progress("done", 100)
         return ConversionResult(
-            markdown=text,
+            markdown=markdown,
             metadata={"encoding": encoding},
         )
+
+
+def _csv_to_table(text: str) -> str:
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return ""
+    header, *body = rows
+    width = len(header)
+    out = ["| " + " | ".join(header) + " |"]
+    out.append("| " + " | ".join("---" for _ in header) + " |")
+    for row in body:
+        padded = row + [""] * (width - len(row))
+        out.append("| " + " | ".join(padded[:width]) + " |")
+    return "\n".join(out)
 
 
 def _decode(data: bytes) -> tuple[str, str]:

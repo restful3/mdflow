@@ -1,7 +1,4 @@
-"""TextConverter — incremental: txt/md passthrough with encoding detect.
-
-CSV → Markdown table lands in the follow-up step.
-"""
+"""TextConverter — full v1 slice: txt/md passthrough + csv → Markdown table."""
 
 from mdflow.converters.base import ConversionContext
 from mdflow.converters.text import TextConverter
@@ -11,16 +8,17 @@ def _ctx(data: bytes, fmt: str, hint: str | None = None) -> ConversionContext:
     return ConversionContext(data=data, filename_hint=hint, format=fmt)
 
 
-def test_can_handle_txt_and_md():
+def test_can_handle_txt_md_csv():
     conv = TextConverter()
     assert conv.can_handle(_ctx(b"", "txt")) is True
     assert conv.can_handle(_ctx(b"", "md")) is True
+    assert conv.can_handle(_ctx(b"", "csv")) is True
 
 
 def test_can_handle_rejects_other_formats():
     conv = TextConverter()
     assert conv.can_handle(_ctx(b"", "pdf")) is False
-    assert conv.can_handle(_ctx(b"", "csv")) is False  # csv lands next slice
+    assert conv.can_handle(_ctx(b"", "docx")) is False
 
 
 def test_txt_passthrough_utf8():
@@ -64,4 +62,40 @@ def test_converter_protocol_attrs():
     assert conv.name == "text-passthrough"
     assert "txt" in conv.formats
     assert "md" in conv.formats
+    assert "csv" in conv.formats
     assert conv.requires_gpu is False
+
+
+def test_csv_renders_header_and_body_as_table():
+    data = b"name,score\nalice,1\nbob,2\n"
+    conv = TextConverter()
+    out = conv.convert(_ctx(data, "csv", "sample.csv"), lambda s, p: None)
+    lines = out.markdown.splitlines()
+    assert lines[0] == "| name | score |"
+    assert lines[1] == "| --- | --- |"
+    assert lines[2] == "| alice | 1 |"
+    assert lines[3] == "| bob | 2 |"
+
+
+def test_csv_pads_short_rows_to_header_width():
+    data = b"a,b,c\n1\n2,3\n"
+    conv = TextConverter()
+    out = conv.convert(_ctx(data, "csv"), lambda s, p: None)
+    lines = out.markdown.splitlines()
+    assert lines[2] == "| 1 |  |  |"
+    assert lines[3] == "| 2 | 3 |  |"
+
+
+def test_csv_empty_returns_empty_markdown():
+    conv = TextConverter()
+    out = conv.convert(_ctx(b"", "csv"), lambda s, p: None)
+    assert out.markdown == ""
+
+
+def test_csv_truncates_rows_longer_than_header():
+    """Extra trailing columns are dropped to match header width."""
+    data = b"a,b\n1,2,3,4\n"
+    conv = TextConverter()
+    out = conv.convert(_ctx(data, "csv"), lambda s, p: None)
+    lines = out.markdown.splitlines()
+    assert lines[2] == "| 1 | 2 |"
