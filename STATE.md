@@ -41,21 +41,48 @@
 ## 4. 파일 시스템 상태
 
 ```text
-~/workspace/mdflow/
-├── STATE.md                                              ← 이 문서
-└── docs/
-    ├── specs/
-    │   └── 2026-05-21-mdflow-design.md                   ← PRD 본문 (406줄, URL 합의 반영)
-    └── reviews/                                           ← URL 처리 코덱스 합의 산출물 (5개)
-        ├── 2026-05-21-url-handling-claude-review.md      (7.9K)
-        ├── 2026-05-21-url-handling-codex-round1.md       (22.9K)
-        ├── 2026-05-21-url-handling-claude-meta-review.md (9.6K)
-        ├── 2026-05-21-url-handling-codex-round2.md       (18.1K)
-        └── 2026-05-21-url-handling-final-agreement.md    (18.1K) ★최종 합의안
+~/workspace/mdflow/   ( = /media/restful3/data/workspace/mdflow ; symlinked )
+├── .gitignore
+├── .venv/                                               ← Python venv (gitignored)
+├── STATE.md                                             ← 이 문서
+├── pyproject.toml                                       ← hatchling, fastapi/pydantic/httpx/...
+├── docs/
+│   ├── specs/2026-05-21-mdflow-design.md                ← PRD (406줄, URL 합의 반영)
+│   ├── reviews/                                         ← Codex 합의 산출물 (5개)
+│   │   ├── 2026-05-21-url-handling-claude-review.md
+│   │   ├── 2026-05-21-url-handling-codex-round1.md
+│   │   ├── 2026-05-21-url-handling-claude-meta-review.md
+│   │   ├── 2026-05-21-url-handling-codex-round2.md
+│   │   └── 2026-05-21-url-handling-final-agreement.md   ★기준 문서
+│   └── superpowers/plans/2026-05-21-m0-skeleton.md      ← M0 plan (17 TDD task)
+├── src/mdflow/
+│   ├── __init__.py                                      (__version__)
+│   ├── settings.py                                      (MDFLOW_* env vars)
+│   ├── api/__init__.py                                  (비어 있음 — Task 14 예정)
+│   ├── core/
+│   │   ├── errors.py                                    (ErrorCode 15 + MdflowError)
+│   │   ├── events.py                                    (Started/Queued/Progress/Cached/Done/Error)
+│   │   ├── format_detect.py                             (ext + magic, magic 우선)
+│   │   ├── cache.py                                     (sha256 atomic 디스크 캐시)
+│   │   ├── registry.py                                  (register + select + list_formats)
+│   │   ├── service.py                                   (ConversionService bytes-in)
+│   │   ├── url_fetch.py                                 (합의안 §3.2 10단계)
+│   │   └── url_pipeline.py                              (convert_from_url helper, 합의안 §3.7)
+│   ├── converters/
+│   │   ├── base.py                                      (Converter Protocol + Context/Result)
+│   │   └── text.py                                      (TextConverter txt/md/csv)
+│   └── runtime/
+│       ├── capabilities.py                              (GPU detect + boot log)
+│       └── concurrency.py                               (GPU 세마포어=1 + CPU pool)
+└── tests/                                               (13 test files, 148 passed/1 skipped)
+    ├── conftest.py                                      (fixtures_dir, tmp_cache_dir)
+    ├── converters/{test_base.py, test_text.py}
+    └── test_{smoke_import, errors, events, settings, format_detect, registry,
+              cache, capabilities, concurrency, url_fetch, service, url_pipeline}.py
 ```
 
-- 빈 디렉터리 외 코드 없음
-- `git init` 안 됨 (사용자 명시 지시 시 처리)
+- git: 24 commits, master 브랜치, 태그 없음 (가장 최근 `8519a49 docs(m0): STATE.md — Task 13 complete`)
+- venv 활성화: `source .venv/bin/activate` 또는 `.venv/bin/python -m pytest`로 직접 실행
 
 ## 5. PRD 문서 구조 (14섹션)
 
@@ -134,11 +161,46 @@
 
 ## 11. 다음 세션 시작 체크리스트
 
-1. `cd ~/workspace/mdflow`
-2. 이 파일(`STATE.md`) 읽기
-3. `docs/specs/2026-05-21-mdflow-design.md` 읽기
-4. 사용자에게: "PRD 검토 결과 알려주세요. 수정 사항 있나요?"
-5. 응답에 따라:
-   - 승인 → `superpowers:writing-plans` 스킬 호출, M0+M1 범위로 시작
-   - 수정 → 해당 섹션 재설계, 합의 후 PRD 업데이트
-   - git init 요청 → 처리 후 진행
+1. `cd ~/workspace/mdflow` (또는 `/media/restful3/data/workspace/mdflow` — 동일 디렉토리)
+2. **이 파일(`STATE.md`)을 먼저 읽기**
+3. 합의안 확인: `docs/reviews/2026-05-21-url-handling-final-agreement.md` (모든 URL 처리 결정의 기준)
+4. plan 확인: `docs/superpowers/plans/2026-05-21-m0-skeleton.md` (남은 Task 14\~17 본문)
+5. 진척 점검: `git log --oneline | head -25` + `.venv/bin/python -m pytest -q` (148 passed 1 skipped 기대)
+6. **다음 액션 — Task 14** (FastAPI 앱 팩토리 + lifespan + `/healthz`):
+   - 새 파일: `src/mdflow/api/app.py`, `tests/api/__init__.py`, `tests/api/test_app.py`
+   - lifespan에서 와이어: `Settings()` → `detect()` Capabilities → `Registry()` + `TextConverter` register → `Cache(settings.cache_dir)` → `ConcurrencyPool(caps.cpu_workers)` → `ConversionService(registry, cache)`. 모두 `app.state.*`에 저장
+   - `/healthz` 라우트: `{"ok": True, "uptime_s": ...}`
+   - TDD: `tests/api/test_app.py`에 `test_healthz_returns_ok` + `test_app_lifespan_initializes_state`를 먼저 fail로 작성 → fastapi.testclient로 검증
+7. 사용자가 작은 슬라이스를 원하는 패턴 유지 — 한 task를 여러 step으로 분할 가능
+
+## 12. 작업 환경 / 자주 쓰는 명령
+
+```bash
+# 환경
+cd ~/workspace/mdflow                            # = /media/restful3/data/workspace/mdflow
+
+# 테스트
+.venv/bin/python -m pytest -q                    # 전체 (148 passed, 1 skipped)
+.venv/bin/python -m pytest tests/test_X.py -v    # 한 파일
+.venv/bin/python -m pytest -m integration        # integration marker만
+
+# 린트/포맷 (커밋 전 항상)
+.venv/bin/ruff check --fix src tests
+.venv/bin/ruff format src tests
+.venv/bin/ruff check src tests                   # final check
+
+# git
+git status                                       # 작업 흐름 점검
+git log --oneline | head -25                     # 진척
+
+# Python 버전 / 의존성
+.venv/bin/python --version                       # 3.12.3 (필요: >=3.11)
+.venv/bin/pip install -e ".[dev]"                # 재설치 필요 시
+```
+
+## 13. 절대 잊으면 안 되는 결정 (참조)
+
+- **URL 처리는 합의안 §3 기준**: 사용자 헤더/쿠키/Authorization/follow_redirects 차단, SSRF v1 필수, cache key는 bytes 기준 + fetch metadata는 request별 합성. v1.1 항목 4개는 PRD §13 참조.
+- **TDD 순서 엄수**: failing test → fail 확인 → impl → pass 확인 → ruff → commit. 각 commit 메시지는 "feat(m0): ..." 또는 "fix(m0): ..." 패턴.
+- **PaperFlow 학술 transformer는 v1 비목표** (PRD §1.2 명시). mdflow는 범용 변환 게이트웨이.
+- **모든 단계는 작게**: 사용자가 패턴으로 굳혀 둠. 한 task에 여러 책임이 묶여 있으면 분할 슬라이스로 commit.
