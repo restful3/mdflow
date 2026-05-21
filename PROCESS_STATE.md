@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (Task 15 완료 — admin endpoints /capabilities + /cache/{sha} GET/DELETE + /cache/purge)
+**최종 갱신**: 2026-05-22 (Task 16 완료 — M0 integration smoke test; 남은 것은 Task 14\~17 묶음 Codex 리뷰 + Task 17 태그)
 
 ---
 
@@ -79,20 +79,20 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M0.F (Service & API)** 거의 완료 — Task 15까지 완료, Task 16\~17 대기 (M0.G)
-- **테스트**: 169 passed / 1 skipped (`.venv/bin/python -m pytest -q`)
-- **린트**: `ruff check` 통과
-- **git**: 27+ commits, master 브랜치, 태그 없음 (가장 최근 `5a63706 feat(m0): FastAPI app factory + /healthz + lifespan (Task 14)`)
+- **현재 phase**: **M0.G** — Task 16(smoke)까지 완료. 남은 것은 **Task 14\~17 묶음 Codex 리뷰** → Task 17 태그
+- **테스트**: 172 passed / 1 skipped (`.venv/bin/python -m pytest -q`; smoke 3개 포함, integration 마커)
+- **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
+- **git**: 28+ commits, master 브랜치, 태그 없음 (가장 최근 `2aaa1c9 feat(m0): admin endpoints /capabilities + /cache/* (Task 15)`)
 - **Codex 리뷰 상태**:
   - 차단 3건 (#1, #2, #3) — 모두 ACCEPT + 코드 반영 + commit 완료
   - 권고 5건 — #4·#5read commit, #5write·#6 코드 반영 + **follow-up 라운드 완료**(`2026-05-22-m0-cache-write-mkdtemp-codex.md`): 추가 #2(mkdtemp OSError wrap) ACCEPT + 적용, 추가 #1(publish race) DEFER (M1); 커밋 보류, #7 DEFER (M1), #8 차단 TDD에 흡수
   - 메모 3건 — #9 DEFER (v1.1), #10 Task 14에서 처리, #11 DEFER (M2)
 - **다음 액션 (다음 1\~3)**:
-  1. **Task 16** M0 smoke test (end-to-end skeleton 검증) — TDD
-  2. **Task 14\~17 묶음 Codex 리뷰** (M0 완료 직전, Task 17 태그 전)
-  3. **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화
+  1. **Task 14\~17 묶음 Codex 리뷰** (M0 완료 직전 — 결정대로). 대상: `api/app.py`, `api/admin.py`, `tests/api/*`, `tests/test_m0_smoke.py`
+  2. 리뷰 ACCEPT 반영 (있으면)
+  3. **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화 (PROCESS_STATE M0 DONE 표기 + M1 plan 대기)
 
-작업 디렉토리 깨끗 (Task 15 commit 직후 갱신 예정).
+작업 디렉토리 깨끗 (Task 16 commit 직후 갱신 예정).
 
 ---
 
@@ -286,7 +286,7 @@ PRD 14섹션 구성:
 
 ### 6.7 M0.G — Smoke & tag [PENDING]
 
-- [ ] **Task 16** M0 smoke test (end-to-end skeleton 검증)
+- [x] **Task 16** M0 integration smoke test — `tests/test_m0_smoke.py` (`pytest.mark.integration`). service text passthrough → cache hit, `/capabilities` cache stats 반영, `validate_url("file://...")` → URL_INVALID, `/healthz`. 모듈 autouse fixture로 `MDFLOW_CACHE_DIR` 격리 (tests/ 루트라 tests/api/conftest.py 미적용). 조립된 골격 검증이라 새 production 코드 없음 — 즉시 통과 정상
 - [ ] **Task 14\~17 묶음 Codex 리뷰** — M0 완료 직전(Task 17 태그 전) 1회. 사용자 결정 2026-05-22: per-task가 아니라 Task 1\~13 관행처럼 API 표면(M0.F+M0.G)을 한 묶음으로 리뷰. Task 14·15는 같은 `api/app.py`/`admin.py`를 건드리므로 개별 리뷰는 중복
 - [ ] **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화
 
