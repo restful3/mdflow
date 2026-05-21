@@ -1,15 +1,23 @@
 # mdflow — 세션 핸드오프 상태
 
-**작성일**: 2026-05-21 (1차) / 2026-05-21 갱신 (8차: M0 Task 1\~13 완료, Task 14 FastAPI 대기)
+**작성일**: 2026-05-21 (1차) / 2026-05-21 갱신 (10차: Codex 리뷰 수신, 차단 3건 ACCEPT, blocker #1 TDD 진행)
 **다음 세션 사용법**: 이 파일을 먼저 읽고, `docs/specs/2026-05-21-mdflow-design.md`(406줄), `docs/superpowers/plans/2026-05-21-m0-skeleton.md`, `docs/reviews/2026-05-21-url-handling-final-agreement.md` 순으로 확인. 코드는 `git log --oneline`으로 진척 점검.
 
 ---
 
 ## 1. 한눈에 보기
 
-- **현재 단계**: M0 plan 실행 중 — **Task 1\~13 완료**
-- **다음 액션**: Task 14(FastAPI 앱 팩토리 + lifespan + `/healthz`) 진행
-- **테스트**: 148 passed, 1 skipped in 0.47s
+- **현재 단계**: M0 plan 실행 중 — **Task 1\~13 완료**, **Codex 리뷰 차단 #1 DONE, #3/#2 진행 예정**
+- **Codex 리뷰 상태**: **반영 진행 중** — `docs/reviews/2026-05-21-m0-task1-13-codex.md`. Codex 자체 검증: `pytest -q` 148/1, `ruff check` 통과
+- **분류**:
+  - 🔴 차단 3건: 모두 ACCEPT (파일/합의안 대조로 사실 확인 완료)
+    - **#1 DONE** — `5d53995 fix(m0): include detected_format in cache key`. detect_format을 cache lookup 이전으로 옮기고, `compute_cache_key(data, options, *, detected_format)`로 시그니처 확장. 회귀 테스트: 같은 bytes(`b"hello world\n"`)가 `.txt` vs `.csv`에서 distinct 출력
+    - #2 TODO — `url_pipeline.py:67` Content-Type hint 미사용 (합의안 §3.2 step 9). 시그니처 확장 범위 큼 (`ConvertRequest`, `detect_format`, `url_pipeline`)
+    - #3 TODO — `url_fetch.py:62,232` 잘못된 port URL이 `httpx.InvalidURL`로 새어 나감. 범위 작음 (validate_url 한 줄 + except 한 줄)
+  - 🟡 권고 5건: #8(회귀 테스트)는 차단 TDD에 흡수 중, #10(Settings→UrlPolicy helper)는 Task 14에서 필요. #4/5/6/7은 차단 처리 후 별도 결정
+  - 🟢 메모 3건: 모두 NOTED (v1.1/M1/M2 추후 작업)
+- **다음 액션**: blocker #3 TDD → blocker #2 TDD → 권고 재판단 → Task 14
+- **테스트**: 149 passed, 1 skipped (blocker #1 회귀 +1)
 - **Task 13 산출물 (2개 슬라이스)**:
   - `src/mdflow/core/service.py` — `ConversionService.convert(req, progress)`: bytes 입력 cache key 계산 → cache hit/miss → format_detect → registry.select → converter.convert → metadata 보강 → cache write. `ConvertRequest`/`ConvertResponse` dataclass + `ProgressCallback` 타입 alias
   - `src/mdflow/core/url_pipeline.py` — `convert_from_url(url, policy, service, options, progress, transport)` helper. `fetch_url` → bytes → `service.convert`. 반환 `UrlConvertResponse(response, fetch dict)`. 합의안 §3.7 핵심 케이스(같은 bytes 두 다른 URL → cache 공유 + 응답별 fetch metadata) 명시 검증
@@ -129,6 +137,7 @@
 
 ## 7. 미결 사항 (다음 세션에서 처리)
 
+- [ ] **Codex 리뷰 결과 반영** — M0 Task 1\~13 묶음 리뷰 (`docs/reviews/2026-05-21-m0-task1-13-codex.md`). 도착 후 분류(차단/권고/메모) → 차단·권고는 작은 슬라이스로 반영 → 메모는 별도 메모. 반영 완료 후 STATE.md 다시 갱신
 - [ ] **M0 Task 14\~17 진행**: FastAPI `/healthz`(14, lifespan에서 Settings+Capabilities+Registry+Cache+ConcurrencyPool+ConversionService 와이어) → admin endpoints(15) → smoke test(16) → 태그(17)
 - [ ] **PaperFlow 보안 이슈 시정**: 사용자가 "나중에 검토" 결정. 별도 세션에서 다룰 수 있음. 핵심 발견은 path traversal·SSRF·약한 기본값 (이전 세션 보고서 참조)
 - [ ] **URL 처리 v1.1 항목**: PRD §13에 4개 항목 등록됨 (SPA/Headless 대응, quality gate 고도화, 인증 fetch, 도메인 allowlist). 별도 시점에 v1.1 PRD로 분리 검토
