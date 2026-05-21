@@ -5,6 +5,7 @@ is NOT in the key (handled at the response-metadata level by the service).
 """
 
 import json
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,27 @@ def test_cache_write_overwrites_existing(tmp_cache_dir: Path):
     assert got.markdown == "second"
 
 
+def test_cache_write_oserror_wrapped_as_cache_io_error(
+    tmp_cache_dir: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Codex recommendation #5 (write slice, 2026-05-22): cache.write
+    must surface OSError paths as `MdflowError(CACHE_IO_ERROR)`, not
+    raw OSError. Forcing `Path.write_text` to fail simulates a disk-full
+    or permission-denied scenario without OS-specific setup.
+    """
+    from mdflow.core.errors import ErrorCode, MdflowError
+
+    cache = Cache(tmp_cache_dir)
+
+    def boom(self, *_args, **_kwargs):  # noqa: ARG001
+        raise OSError("simulated disk failure")
+
+    monkeypatch.setattr(Path, "write_text", boom)
+    with pytest.raises(MdflowError) as exc:
+        cache.write("a" * 64, ConversionResult(markdown="x"), options={})
+    assert exc.value.code is ErrorCode.CACHE_IO_ERROR
+
+
 def test_cache_read_corrupt_meta_json_raises_cache_io_error(tmp_cache_dir: Path):
     """Codex recommendation #5 (2026-05-22): a corrupted `meta.json`
     must surface as `MdflowError(CACHE_IO_ERROR)` instead of leaking a
@@ -137,6 +159,57 @@ def test_cache_read_corrupt_meta_json_raises_cache_io_error(tmp_cache_dir: Path)
     with pytest.raises(MdflowError) as exc:
         cache.read(sha)
     assert exc.value.code is ErrorCode.CACHE_IO_ERROR
+
+
+def test_cache_write_mkdtemp_oserror_wrapped_as_cache_io_error(
+    tmp_cache_dir: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Codex finding #2 (2026-05-22 follow-up review): an `OSError` from
+    `tempfile.mkdtemp` itself (cache root unwritable, permission flip,
+    disk error before any payload is written) must also surface as
+    `MdflowError(CACHE_IO_ERROR)` with `__cause__` preserved — the
+    first slice only covered `Path.write_text` failures.
+    """
+    from mdflow.core.errors import ErrorCode, MdflowError
+
+    cache = Cache(tmp_cache_dir)
+
+    def boom(*_args, **_kwargs):
+        raise OSError("simulated mkdtemp failure")
+
+    monkeypatch.setattr("mdflow.core.cache.tempfile.mkdtemp", boom)
+    with pytest.raises(MdflowError) as exc:
+        cache.write("a" * 64, ConversionResult(markdown="x"), options={})
+    assert exc.value.code is ErrorCode.CACHE_IO_ERROR
+    assert isinstance(exc.value.__cause__, OSError)
+
+
+def test_cache_write_uses_unique_tmp_dir_per_call(
+    tmp_cache_dir: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Codex recommendation #6 (2026-05-22): two cache writes against
+    the same sha must allocate unique tmp directories. The original
+    fixed `.tmp-{sha}` path could be clobbered by a concurrent writer.
+    `tempfile.mkdtemp(prefix=f".tmp-{sha}-", dir=root)` gives each call
+    its own dir, eliminating mid-write tmp corruption. (Publish-step
+    race on `os.replace` after a non-empty destination is a separate
+    M1+ concern — see follow-up review finding #1.)
+    """
+    seen: list[str] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def spy(*a, **kw):
+        path = real_mkdtemp(*a, **kw)
+        seen.append(path)
+        return path
+
+    monkeypatch.setattr("mdflow.core.cache.tempfile.mkdtemp", spy)
+    cache = Cache(tmp_cache_dir)
+    sha = "a" * 64
+    cache.write(sha, ConversionResult(markdown="x"), options={})
+    cache.write(sha, ConversionResult(markdown="y"), options={})
+    assert len(seen) == 2
+    assert seen[0] != seen[1]
 
 
 def test_cache_purge_ignores_non_entry_files(tmp_cache_dir: Path):

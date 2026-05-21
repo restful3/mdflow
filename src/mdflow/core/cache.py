@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -73,23 +74,40 @@ class Cache:
 
     def write(self, sha: str, result: ConversionResult, options: dict[str, Any]) -> None:
         entry = self._entry_dir(sha)
-        tmp = self.root / f".tmp-{sha}"
-        if tmp.exists():
-            shutil.rmtree(tmp)
-        tmp.mkdir(parents=True)
-        (tmp / "result.md").write_text(result.markdown, encoding="utf-8")
-        meta = {
-            "sha256": sha,
-            "options": options,
-            "metadata": result.metadata,
-            "assets": result.assets,
-        }
-        (tmp / "meta.json").write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        if entry.exists():
-            shutil.rmtree(entry)
-        os.replace(tmp, entry)
+        # mkdtemp() gives every writer a unique tmp dir under self.root, so
+        # two concurrent writes against the same sha can't clobber a shared
+        # `.tmp-{sha}` path. Publish (rmtree+os.replace) is still a two-step
+        # operation, so a concurrent same-sha writer can still race at the
+        # destination; under contention one writer succeeds and the other
+        # surfaces CACHE_IO_ERROR. This is acceptable for M0 (sequential
+        # API path; identical keys → identical converter output → next
+        # request is a cache hit). Stronger publish atomicity is deferred
+        # to M1+ (per-sha lock or first-writer-wins semantics change).
+        tmp: Path | None = None
+        try:
+            tmp = Path(tempfile.mkdtemp(prefix=f".tmp-{sha}-", dir=self.root))
+            (tmp / "result.md").write_text(result.markdown, encoding="utf-8")
+            meta = {
+                "sha256": sha,
+                "options": options,
+                "metadata": result.metadata,
+                "assets": result.assets,
+            }
+            (tmp / "meta.json").write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            if entry.exists():
+                shutil.rmtree(entry)
+            os.replace(tmp, entry)
+        except OSError as e:
+            # Best-effort cleanup of any partial tmp dir before surfacing
+            # the standard retryable code (PRD §8.1).
+            if tmp is not None and tmp.exists():
+                shutil.rmtree(tmp, ignore_errors=True)
+            raise MdflowError(
+                ErrorCode.CACHE_IO_ERROR,
+                f"cache entry {sha} unwritable: {e}",
+            ) from e
 
     def read(self, sha: str) -> ConversionResult | None:
         entry = self._entry_dir(sha)

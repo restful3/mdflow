@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (PROCESS_STATE 초안 / STATE.md → archive 이관)
+**최종 갱신**: 2026-05-22 (cache.write follow-up 리뷰 — #2 mkdtemp wrap ACCEPT+적용, #1 publish race DEFER M1)
 
 ---
 
@@ -80,22 +80,22 @@
 ## 2. 한눈에 보기 (현재 상태)
 
 - **현재 phase**: **M0.F (Service & API)** 진행 중 — Task 13까지 완료, Task 14\~17 대기
-- **테스트**: 158 passed / 1 skipped (`.venv/bin/python -m pytest -q`)
+- **테스트**: 159 passed / 1 skipped (`.venv/bin/python -m pytest -q`)
 - **린트**: `ruff check` 통과
-- **git**: 24+ commits, master 브랜치, 태그 없음 (가장 최근 `961b486 docs(m0): STATE.md — #4 commit + #5 read slice commit, #5 write next`)
+- **git**: 24+ commits, master 브랜치, 태그 없음 (가장 최근 `4efc814 docs(state): introduce PROCESS_STATE.md as canonical state doc`)
 - **Codex 리뷰 상태**:
   - 차단 3건 (#1, #2, #3) — 모두 ACCEPT + 코드 반영 + commit 완료
-  - 권고 5건 — #4·#5read commit, #5write·#6 코드 반영 (커밋 보류, Codex 리뷰 송부 완료 ACCEPT 대기), #7 DEFER (M1), #8 차단 TDD에 흡수
+  - 권고 5건 — #4·#5read commit, #5write·#6 코드 반영 + **follow-up 라운드 완료**(`2026-05-22-m0-cache-write-mkdtemp-codex.md`): 추가 #2(mkdtemp OSError wrap) ACCEPT + 적용, 추가 #1(publish race) DEFER (M1); 커밋 보류, #7 DEFER (M1), #8 차단 TDD에 흡수
   - 메모 3건 — #9 DEFER (v1.1), #10 Task 14에서 처리, #11 DEFER (M2)
 - **다음 액션 (다음 1\~3)**:
-  1. 권고 #5write + #6 묶음 Codex 리뷰 ACCEPT 확인 → 커밋
+  1. 권고 #5write + #6 + follow-up #2(mkdtemp wrap) 묶음 커밋 (`feat(m0): wrap cache.write I/O errors and use unique mkdtemp` 패턴)
   2. **Task 14** 진입: `src/mdflow/api/app.py` + `tests/api/test_app.py` (lifespan + `/healthz` + 메모 #10 `Settings → UrlPolicy` helper)
   3. Task 15\~17 순차: admin endpoints → smoke test → `v0.0.1-m0` 태그
 
-작업 디렉토리에 사전 변경 파일(권고 #5write + #6 코드, 커밋 보류) 잔존:
+작업 디렉토리에 사전 변경 파일 (커밋 보류) 잔존:
 
-- `src/mdflow/core/cache.py` (modified)
-- `tests/test_cache.py` (modified)
+- `src/mdflow/core/cache.py` (modified — #5write + #6 + follow-up #2 mkdtemp wrap, "last replace wins" 잘못된 invariant 주석 정정)
+- `tests/test_cache.py` (modified — 회귀 3종: write_text OSError wrap, mkdtemp OSError wrap, unique tmp dir per call)
 
 ---
 
@@ -309,8 +309,10 @@ PRD 14섹션 구성:
 
 - [x] **#4** `c3afde8 refactor(m0): remove ConvertRequest.fetch_metadata dead field` — `ConvertRequest.fetch_metadata` 필드 제거 + 위 주석 제거 + module docstring 갱신 (URL fetch metadata는 `UrlConvertResponse.fetch` sidecar로 처리됨을 명시). 회귀: `test_convert_request_rejects_fetch_metadata_keyword` (TypeError 검증)
 - [x] **#5 read 슬라이스** `2a64b7d fix(m0): wrap cache.read I/O errors as CACHE_IO_ERROR` — `cache.read`에서 `(OSError, json.JSONDecodeError)`를 catch해 `MdflowError(CACHE_IO_ERROR)`로 wrap. 회귀: 깨진 meta.json + 정상 result.md 조합에 read() → CACHE_IO_ERROR
-- [x] **#5 write 슬라이스** (코드 반영, **커밋 보류, Codex 리뷰 송부 완료**) — `cache.write`의 atomic write 블록을 `try/except OSError`로 감싸 `MdflowError(CACHE_IO_ERROR)`로 wrap + 실패 시 `shutil.rmtree(tmp, ignore_errors=True)` 정리. 회귀: `monkeypatch`로 `Path.write_text`를 OSError raise → `cache.write`가 `MdflowError(CACHE_IO_ERROR)`
-- [x] **#6** (코드 반영, **커밋 보류, Codex 리뷰 송부 완료**) — `cache.write`의 `.tmp-{sha}` 고정을 `tempfile.mkdtemp(prefix=f".tmp-{sha}-", dir=self.root)`로 변경. 동시 sha write 시 unique tmp dir 사용, "마지막 replace 승" outcome 보장. 회귀: `monkeypatch`로 `mdflow.core.cache.tempfile.mkdtemp` spy — 두 sequential write가 distinct tmp path 받음
+- [x] **#5 write 슬라이스** (코드 반영, **커밋 보류**) — `cache.write`의 atomic write 블록을 `try/except OSError`로 감싸 `MdflowError(CACHE_IO_ERROR)`로 wrap + 실패 시 `shutil.rmtree(tmp, ignore_errors=True)` 정리. 회귀: `monkeypatch`로 `Path.write_text`를 OSError raise → `cache.write`가 `MdflowError(CACHE_IO_ERROR)`
+- [x] **#6** (코드 반영, **커밋 보류**) — `cache.write`의 `.tmp-{sha}` 고정을 `tempfile.mkdtemp(prefix=f".tmp-{sha}-", dir=self.root)`로 변경. 동시 sha write 시 unique tmp 사용. 회귀: `monkeypatch`로 `mdflow.core.cache.tempfile.mkdtemp` spy — 두 sequential write가 distinct tmp path 받음
+- [x] **Follow-up 라운드 #2 (mkdtemp OSError wrap) — ACCEPT + 적용** (`docs/reviews/2026-05-22-m0-cache-write-mkdtemp-codex.md`, **커밋 보류**) — `mkdtemp()` 호출이 try 블록 밖이라 root 권한/디스크 오류 시 raw `OSError` 누출. `tmp: Path | None = None` init + `mkdtemp` 호출을 try 안으로 이동 + cleanup에 `tmp is not None` 가드. 회귀: `test_cache_write_mkdtemp_oserror_wrapped_as_cache_io_error` (`mdflow.core.cache.tempfile.mkdtemp` monkeypatch로 OSError raise → `MdflowError(CACHE_IO_ERROR)` + `__cause__` 보존)
+- [ ] **Follow-up 라운드 #1 (publish race) — DEFER (M1)** — `os.replace(tmp, entry)` 직전 `if entry.exists(): rmtree(entry)`는 두 단계라 동시 same-sha writer가 destination에서 collide 가능 (한 writer가 `OSError` 받을 수 있음). 해결책 두 옵션 모두 M0 범위 확장: (a) sha별 lock manager 도입, (b) "first-writer-wins"로 API semantics 변경. M0 단일 프로세스 sequential 가정에서 outcome은 "한 writer 실패해도 다음 호출 cache hit" — 데이터 손상 없음. 잘못된 invariant 주석 ("last replace wins")만 정정. M1에서 다른 cache concurrency 항목과 묶어 처리
 - [ ] **#7 DEFER (M1)** — URL fetch temp file streaming. Codex 본인이 M1 권고
 - [x] **#8** 회귀 테스트 누락은 차단 TDD에 흡수 완료
 
@@ -354,6 +356,7 @@ PRD 14섹션 구성:
 - [ ] HTML 컨버터 (trafilatura + markdownify + beautifulsoup4)
 - [ ] `language_hint` 옵션 (Phase M0 R4 흡수)
 - [ ] URL fetch temp file streaming (Codex 권고 #7 흡수)
+- [ ] Cache publish atomicity 강화 (M0 follow-up #1 흡수) — sha별 lock 또는 first-writer-wins semantics 중 택일 + 회귀 테스트 (barrier 있는 동시 same-sha write)
 - [ ] 골든 출력 파일 (`tests/golden/<converter>/<fixture>.md`) + diff 리뷰 강제
 
 ### Phase M1 — 이슈 / 노트 (사전)
@@ -475,7 +478,7 @@ PRD 14섹션 구성:
 
 ## 13. 미결 사항 (다음 세션에서 처리)
 
-- [ ] **권고 #5write + #6 묶음 Codex 리뷰 결과 ACCEPT 확인** → 커밋 (cache.py / test_cache.py)
+- [ ] **권고 #5write + #6 + follow-up #2(mkdtemp wrap) 묶음 커밋** (cache.py / test_cache.py — follow-up 리뷰 ACCEPT 완료, 잘못된 invariant 주석 정정 포함)
 - [ ] **M0 Task 14\~17 진행**:
   - Task 14: FastAPI 앱 + lifespan + `/healthz` + 메모 #10 helper
   - Task 15: admin endpoints (`/capabilities`, `/cache/*`)
