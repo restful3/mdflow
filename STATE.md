@@ -7,17 +7,17 @@
 
 ## 1. 한눈에 보기
 
-- **현재 단계**: M0 plan 실행 중 — **Task 1\~13 완료**, **Codex 리뷰 차단 #1 DONE, #3/#2 진행 예정**
+- **현재 단계**: M0 plan 실행 중 — **Task 1\~13 완료**, **Codex 리뷰 차단 #1/#3 DONE, #2 진행 예정**
 - **Codex 리뷰 상태**: **반영 진행 중** — `docs/reviews/2026-05-21-m0-task1-13-codex.md`. Codex 자체 검증: `pytest -q` 148/1, `ruff check` 통과
 - **분류**:
   - 🔴 차단 3건: 모두 ACCEPT (파일/합의안 대조로 사실 확인 완료)
-    - **#1 DONE** — `5d53995 fix(m0): include detected_format in cache key`. detect_format을 cache lookup 이전으로 옮기고, `compute_cache_key(data, options, *, detected_format)`로 시그니처 확장. 회귀 테스트: 같은 bytes(`b"hello world\n"`)가 `.txt` vs `.csv`에서 distinct 출력
+    - **#1 DONE** — `5d53995 fix(m0): include detected_format in cache key`. detect_format을 cache lookup 이전으로 옮기고, `compute_cache_key(data, options, *, detected_format)`로 시그니처 확장. 회귀: `b"hello world\n"` `.txt` vs `.csv` distinct 출력
+    - **#3 DONE** — `3e997d0 fix(m0): validate_url rejects malformed port`. `validate_url`에서 `parsed.port` 접근으로 ValueError를 `MdflowError(URL_INVALID)`로 wrap. 회귀: bad/-1/99999 parametrize 3건. CLAUDE.md "단순함이 먼저다" 원칙으로 fetch_url의 방어적 InvalidURL catch는 추가 안 함 (validate_url이 모든 진입점을 막음)
     - #2 TODO — `url_pipeline.py:67` Content-Type hint 미사용 (합의안 §3.2 step 9). 시그니처 확장 범위 큼 (`ConvertRequest`, `detect_format`, `url_pipeline`)
-    - #3 TODO — `url_fetch.py:62,232` 잘못된 port URL이 `httpx.InvalidURL`로 새어 나감. 범위 작음 (validate_url 한 줄 + except 한 줄)
   - 🟡 권고 5건: #8(회귀 테스트)는 차단 TDD에 흡수 중, #10(Settings→UrlPolicy helper)는 Task 14에서 필요. #4/5/6/7은 차단 처리 후 별도 결정
   - 🟢 메모 3건: 모두 NOTED (v1.1/M1/M2 추후 작업)
-- **다음 액션**: blocker #3 TDD → blocker #2 TDD → 권고 재판단 → Task 14
-- **테스트**: 149 passed, 1 skipped (blocker #1 회귀 +1)
+- **다음 액션**: blocker #2 TDD → 권고 재판단 → Task 14
+- **테스트**: 152 passed, 1 skipped (blocker #1 회귀 +1, blocker #3 회귀 +3)
 - **Task 13 산출물 (2개 슬라이스)**:
   - `src/mdflow/core/service.py` — `ConversionService.convert(req, progress)`: bytes 입력 cache key 계산 → cache hit/miss → format_detect → registry.select → converter.convert → metadata 보강 → cache write. `ConvertRequest`/`ConvertResponse` dataclass + `ProgressCallback` 타입 alias
   - `src/mdflow/core/url_pipeline.py` — `convert_from_url(url, policy, service, options, progress, transport)` helper. `fetch_url` → bytes → `service.convert`. 반환 `UrlConvertResponse(response, fetch dict)`. 합의안 §3.7 핵심 케이스(같은 bytes 두 다른 URL → cache 공유 + 응답별 fetch metadata) 명시 검증
