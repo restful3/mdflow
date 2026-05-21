@@ -53,7 +53,14 @@ class ConversionService:
         req: ConvertRequest,
         progress: ProgressCallback = _noop_progress,
     ) -> ConvertResponse:
-        sha = compute_cache_key(req.data, req.options)
+        detection = detect_format(req.data, req.filename_hint)
+        if detection.format is None:
+            raise MdflowError(
+                ErrorCode.FORMAT_DETECT_FAILED,
+                "extension and magic-bytes both unknown",
+            )
+
+        sha = compute_cache_key(req.data, req.options, detected_format=detection.format)
 
         cached = self.cache.read(sha)
         if cached is not None:
@@ -61,15 +68,8 @@ class ConversionService:
                 result=cached,
                 sha256=sha,
                 cached=True,
-                detected_format=cached.metadata.get("format", ""),
+                detected_format=detection.format,
                 converter_name=cached.metadata.get("converter", ""),
-            )
-
-        detection = detect_format(req.data, req.filename_hint)
-        if detection.format is None:
-            raise MdflowError(
-                ErrorCode.FORMAT_DETECT_FAILED,
-                "extension and magic-bytes both unknown",
             )
 
         ctx = ConversionContext(

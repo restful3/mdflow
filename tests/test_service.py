@@ -67,6 +67,29 @@ def test_convert_options_change_cache_key(service: ConversionService):
     assert b.cached is False
 
 
+def test_convert_cache_key_includes_detected_format(service: ConversionService):
+    """Codex review blocker #1 (2026-05-21): same bytes with different
+    filename hints must not share cache entries when detection routes
+    them through different converters. Without including detected_format
+    in the cache key, `.txt` first then `.csv` returns the txt-cached
+    result instead of the csv table.
+
+    Comma-free bytes are used so libmagic does not classify as text/csv
+    (which would let magic-wins override the .txt hint).
+    """
+    data = b"hello world\n"
+
+    txt_out = service.convert(ConvertRequest(data=data, filename_hint="t.txt"))
+    csv_out = service.convert(ConvertRequest(data=data, filename_hint="t.csv"))
+
+    assert txt_out.detected_format == "txt"
+    assert csv_out.detected_format == "csv"
+    assert txt_out.result.markdown == "hello world\n"
+    assert csv_out.result.markdown.startswith("| hello world |")
+    assert txt_out.sha256 != csv_out.sha256
+    assert csv_out.cached is False
+
+
 def test_convert_progress_callback_invoked(service: ConversionService):
     seen: list[tuple[str, int]] = []
     service.convert(

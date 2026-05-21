@@ -14,21 +14,28 @@ from mdflow.core.cache import Cache, compute_cache_key
 
 
 def test_compute_cache_key_is_deterministic_under_dict_reordering():
-    k1 = compute_cache_key(b"abc", {"a": 1, "b": 2})
-    k2 = compute_cache_key(b"abc", {"b": 2, "a": 1})
+    k1 = compute_cache_key(b"abc", {"a": 1, "b": 2}, detected_format="txt")
+    k2 = compute_cache_key(b"abc", {"b": 2, "a": 1}, detected_format="txt")
     assert k1 == k2
     assert len(k1) == 64
 
 
 def test_compute_cache_key_changes_with_options():
-    a = compute_cache_key(b"abc", {"x": 1})
-    b = compute_cache_key(b"abc", {"x": 2})
+    a = compute_cache_key(b"abc", {"x": 1}, detected_format="txt")
+    b = compute_cache_key(b"abc", {"x": 2}, detected_format="txt")
     assert a != b
 
 
 def test_compute_cache_key_changes_with_bytes():
-    a = compute_cache_key(b"abc", {})
-    b = compute_cache_key(b"abd", {})
+    a = compute_cache_key(b"abc", {}, detected_format="txt")
+    b = compute_cache_key(b"abd", {}, detected_format="txt")
+    assert a != b
+
+
+def test_compute_cache_key_changes_with_detected_format():
+    """Codex review blocker #1: detected_format must be part of the key."""
+    a = compute_cache_key(b"abc", {}, detected_format="txt")
+    b = compute_cache_key(b"abc", {}, detected_format="csv")
     assert a != b
 
 

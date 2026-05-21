@@ -1,7 +1,12 @@
 """sha256 disk cache for conversion results.
 
 PRD §9 + URL handling agreement §3.7:
-- key = sha256(input_bytes || canonical_options_json)
+- key = sha256(input_bytes || NUL || canonical_options_json || NUL || detected_format)
+- detected_format is part of the key because the converter routed for
+  the same bytes can differ by filename hint (e.g. ".txt" vs ".csv"),
+  and those routes produce distinct outputs. Without it, the second
+  request would get the first request's cached (wrong) result.
+  (Codex review blocker #1, 2026-05-21)
 - URL provenance (source_url/effective_url/...) is NOT in the key; it
   is reconciled at the request-metadata level by ConversionService
 - entries are written atomically (tmp dir + os.replace) so a crash
@@ -26,12 +31,19 @@ from mdflow.converters.base import ConversionResult
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def compute_cache_key(data: bytes, options: dict[str, Any]) -> str:
+def compute_cache_key(
+    data: bytes,
+    options: dict[str, Any],
+    *,
+    detected_format: str,
+) -> str:
     canonical = json.dumps(options, sort_keys=True, separators=(",", ":")).encode("utf-8")
     h = hashlib.sha256()
     h.update(data)
     h.update(b"\x00")
     h.update(canonical)
+    h.update(b"\x00")
+    h.update(detected_format.encode("utf-8"))
     return h.hexdigest()
 
 
