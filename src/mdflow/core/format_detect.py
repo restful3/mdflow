@@ -30,7 +30,9 @@ class DetectionResult:
 
 
 _MIME_TO_FORMAT: dict[str, str] = {
-    "text/plain": "txt",
+    # text/plain is intentionally excluded: libmagic returns it for nearly
+    # any text input (txt/md/csv), which would create false agreements or
+    # false magic-wins disagreements against the extension hint.
     "text/markdown": "md",
     "text/csv": "csv",
     "application/pdf": "pdf",
