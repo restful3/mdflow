@@ -84,6 +84,25 @@ def test_validate_url_rejects_userinfo():
     assert exc.value.code is ErrorCode.URL_INVALID
 
 
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "https://example.com:bad/path",  # non-integer port
+        "https://example.com:-1/path",  # negative port
+        "https://example.com:99999/path",  # port out of valid range
+    ],
+)
+def test_validate_url_rejects_malformed_port(bad):
+    """Codex blocker #3 (2026-05-21): urlparse accepts these but
+    `parsed.port` raises ValueError. If we don't surface it here, httpx
+    later raises `httpx.InvalidURL` (NOT a subclass of RequestError) and
+    leaks past fetch_url's catch as a raw exception.
+    """
+    with pytest.raises(MdflowError) as exc:
+        validate_url(bad)
+    assert exc.value.code is ErrorCode.URL_INVALID
+
+
 # -------- step 2: fragment dropped --------
 
 

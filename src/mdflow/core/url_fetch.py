@@ -71,6 +71,15 @@ def validate_url(url: str) -> None:
         raise MdflowError(ErrorCode.URL_INVALID, "missing host")
     if parsed.username is not None or parsed.password is not None:
         raise MdflowError(ErrorCode.URL_INVALID, "userinfo not allowed in URL")
+    # `parsed.port` is computed lazily and raises ValueError on
+    # non-integer / out-of-range port. Catching it here keeps malformed
+    # URLs from reaching httpx, which would surface them as
+    # httpx.InvalidURL (not a RequestError subclass) and leak past our
+    # error handling.
+    try:
+        _ = parsed.port
+    except ValueError as e:
+        raise MdflowError(ErrorCode.URL_INVALID, f"invalid port: {e}") from e
 
 
 # ---------------- step 2: fragment ----------------
