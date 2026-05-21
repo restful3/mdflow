@@ -1,16 +1,18 @@
 # mdflow — 세션 핸드오프 상태
 
-**작성일**: 2026-05-21 (1차) / 2026-05-21 갱신 (7차: M0 Task 1\~12 완료, Task 13 ConversionService 대기)
+**작성일**: 2026-05-21 (1차) / 2026-05-21 갱신 (8차: M0 Task 1\~13 완료, Task 14 FastAPI 대기)
 **다음 세션 사용법**: 이 파일을 먼저 읽고, `docs/specs/2026-05-21-mdflow-design.md`(406줄), `docs/superpowers/plans/2026-05-21-m0-skeleton.md`, `docs/reviews/2026-05-21-url-handling-final-agreement.md` 순으로 확인. 코드는 `git log --oneline`으로 진척 점검.
 
 ---
 
 ## 1. 한눈에 보기
 
-- **현재 단계**: M0 plan 실행 중 — **Task 1\~12 완료** (`url_fetch` 합의안 §3.2 10단계 1:1 매핑 적용)
-- **다음 액션**: Task 13(`ConversionService` — Cache+Registry+url_fetch 통합) 진행
-- **테스트**: 137 passed, 1 skipped in 0.38s
-- **Task 12 산출물**: `src/mdflow/core/url_fetch.py` (`UrlPolicy`, `FetchResult`, `validate_url`, `_drop_fragment`, `_is_blocked_ip`, `_enforce_ssrf`, `fetch_url`); `tests/test_url_fetch.py` 41 케이스 (40 passed + 1 skipped — redirect status 파라메트라이즈 중 redirect 코드는 step 5 별도 테스트가 cover하므로 skip)
+- **현재 단계**: M0 plan 실행 중 — **Task 1\~13 완료**
+- **다음 액션**: Task 14(FastAPI 앱 팩토리 + lifespan + `/healthz`) 진행
+- **테스트**: 148 passed, 1 skipped in 0.47s
+- **Task 13 산출물 (2개 슬라이스)**:
+  - `src/mdflow/core/service.py` — `ConversionService.convert(req, progress)`: bytes 입력 cache key 계산 → cache hit/miss → format_detect → registry.select → converter.convert → metadata 보강 → cache write. `ConvertRequest`/`ConvertResponse` dataclass + `ProgressCallback` 타입 alias
+  - `src/mdflow/core/url_pipeline.py` — `convert_from_url(url, policy, service, options, progress, transport)` helper. `fetch_url` → bytes → `service.convert`. 반환 `UrlConvertResponse(response, fetch dict)`. 합의안 §3.7 핵심 케이스(같은 bytes 두 다른 URL → cache 공유 + 응답별 fetch metadata) 명시 검증
 - **PRD**: 406줄, URL 처리 v1 정책 반영
 - **Plan**: `docs/superpowers/plans/2026-05-21-m0-skeleton.md` (17 task, TDD)
 
@@ -88,18 +90,19 @@
 10. PRD에 합의된 패치 11개 적용 (§1.2, §5, §5.1, §6, §7, §8.1, §8.3, §9, §10, §11, §12, §13)
 11. M0 implementation plan 작성 (`docs/superpowers/plans/2026-05-21-m0-skeleton.md`, 17 TDD task + TL;DR phases/scope/risks)
 12. git init + 첫 커밋 (PRD + reviews + plan)
-13. **M0 Task 1\~12 TDD로 실행**:
+13. **M0 Task 1\~13 TDD로 실행**:
     - Task 1 bootstrap, Task 2 errors(15코드), Task 3 events(6 이벤트), Task 4 settings(MDFLOW_* 9개)
     - Task 5 format_detect(ext+magic, magic 우선), Task 6 converters/base, Task 7 TextConverter(txt/md/csv)
     - Task 8 Registry(register+select+list_formats), Task 9 Cache(sha256 atomic), Task 10 Capabilities(GPU detect+boot log)
     - Task 11 ConcurrencyPool(GPU 세마포어=1 + CPU ThreadPool, gpu_lock async ctx + idempotent shutdown)
     - Task 12 url_fetch(합의안 §3.2의 10단계 — validate/fragment/SSRF/UA/redirect per-hop/timeout/size cap/2xx/filename hint/FetchResult metadata)
+    - Task 13 ConversionService(bytes 입력 cache/detect/dispatch) + url_pipeline.convert_from_url(URL → fetch → service 통합 helper, 합의안 §3.7 적용)
     - 각 task TDD 사이클(fail→impl→pass→ruff→commit). 일부는 작은 슬라이스로 분할하여 단계별 commit
     - 두 곳에서 리스크 R4(chardet 짧은 텍스트), 그리고 libmagic over-classification 실현 → fix 커밋으로 처리
 
 ## 7. 미결 사항 (다음 세션에서 처리)
 
-- [ ] **M0 Task 13\~17 진행**: `ConversionService`(13, Cache+Registry+url_fetch 통합) → FastAPI `/healthz`(14) → admin endpoints(15) → smoke test(16) → 태그(17)
+- [ ] **M0 Task 14\~17 진행**: FastAPI `/healthz`(14, lifespan에서 Settings+Capabilities+Registry+Cache+ConcurrencyPool+ConversionService 와이어) → admin endpoints(15) → smoke test(16) → 태그(17)
 - [ ] **PaperFlow 보안 이슈 시정**: 사용자가 "나중에 검토" 결정. 별도 세션에서 다룰 수 있음. 핵심 발견은 path traversal·SSRF·약한 기본값 (이전 세션 보고서 참조)
 - [ ] **URL 처리 v1.1 항목**: PRD §13에 4개 항목 등록됨 (SPA/Headless 대응, quality gate 고도화, 인증 fetch, 도메인 allowlist). 별도 시점에 v1.1 PRD로 분리 검토
 
