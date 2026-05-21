@@ -1,15 +1,18 @@
 """Converter base types.
 
-Incremental: this slice defines the data carriers (ConversionContext,
-ConversionResult). The Converter Protocol — and the ProgressCallback
-type — land in the follow-up step.
+Full set: ConversionContext, ConversionResult, ProgressCallback type
+alias, and the Converter Protocol (runtime-checkable so the Registry
+can validate registrations).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
+
+ProgressCallback = Callable[[str, int], None]
 
 
 @dataclass
@@ -31,3 +34,16 @@ class ConversionResult:
     markdown: str
     metadata: dict[str, Any] = field(default_factory=dict)
     assets: list[str] = field(default_factory=list)
+
+
+@runtime_checkable
+class Converter(Protocol):
+    """A converter turns a `ConversionContext` into a `ConversionResult`."""
+
+    name: str
+    formats: tuple[str, ...]
+    requires_gpu: bool
+
+    def can_handle(self, ctx: ConversionContext) -> bool: ...
+
+    def convert(self, ctx: ConversionContext, progress: ProgressCallback) -> ConversionResult: ...
