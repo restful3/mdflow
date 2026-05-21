@@ -1,8 +1,7 @@
-"""Format detection — incremental: extension only.
+"""Format detection — full slice: extension + magic bytes."""
 
-Magic-bytes detection lands in a subsequent step; this slice covers
-DetectionResult shape and extension-based lookup.
-"""
+import zipfile
+from io import BytesIO
 
 from mdflow.core.format_detect import DetectionResult, detect_format
 
@@ -58,3 +57,72 @@ def test_detection_result_dataclass_fields():
 def test_detection_result_default_warnings_empty():
     r = DetectionResult(format="txt", source="ext")
     assert r.warnings == []
+
+
+def _make_ooxml(marker_path: str) -> bytes:
+    """Build a minimal ZIP containing one entry under the given OOXML marker."""
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(marker_path, b"x")
+    return buf.getvalue()
+
+
+def test_detect_pdf_by_magic_only():
+    pdf = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
+    result = detect_format(pdf, filename_hint=None)
+    assert result.format == "pdf"
+    assert result.source == "magic"
+
+
+def test_detect_docx_by_magic_ooxml():
+    blob = _make_ooxml("word/document.xml")
+    result = detect_format(blob, filename_hint=None)
+    assert result.format == "docx"
+    assert result.source == "magic"
+
+
+def test_detect_pptx_by_magic_ooxml():
+    blob = _make_ooxml("ppt/presentation.xml")
+    result = detect_format(blob, filename_hint=None)
+    assert result.format == "pptx"
+    assert result.source == "magic"
+
+
+def test_detect_xlsx_by_magic_ooxml():
+    blob = _make_ooxml("xl/workbook.xml")
+    result = detect_format(blob, filename_hint=None)
+    assert result.format == "xlsx"
+    assert result.source == "magic"
+
+
+def test_detect_html_by_doctype():
+    result = detect_format(b"<!DOCTYPE html><html><body>x</body></html>", filename_hint=None)
+    assert result.format == "html"
+    assert result.source == "magic"
+
+
+def test_detect_html_by_open_tag_with_leading_whitespace():
+    result = detect_format(b"   \n<html><body></body></html>", filename_hint=None)
+    assert result.format == "html"
+
+
+def test_detect_agreement_no_warning():
+    pdf = b"%PDF-1.4\n"
+    result = detect_format(pdf, filename_hint="report.pdf")
+    assert result.format == "pdf"
+    assert result.source == "agreement"
+    assert result.warnings == []
+
+
+def test_detect_disagreement_prefers_magic_and_warns():
+    pdf = b"%PDF-1.4\n"
+    result = detect_format(pdf, filename_hint="trick.txt")
+    assert result.format == "pdf"
+    assert result.source == "magic"
+    assert any("disagreement" in w.lower() for w in result.warnings)
+
+
+def test_detect_unknown_returns_unknown():
+    result = detect_format(b"\x00\x01\x02noisy", filename_hint=None)
+    assert result.format is None
+    assert result.source == "unknown"
