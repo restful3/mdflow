@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from mdflow.converters.base import ConversionResult
+from mdflow.core.errors import ErrorCode, MdflowError
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -97,8 +98,16 @@ class Cache:
         if not (result_file.exists() and meta_file.exists()):
             self._stats.miss_count += 1
             return None
-        markdown = result_file.read_text(encoding="utf-8")
-        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        # Disk I/O or a corrupted meta.json must surface as the standard
+        # retryable code (PRD §8.1) — never a raw OSError or JSONDecodeError.
+        try:
+            markdown = result_file.read_text(encoding="utf-8")
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            raise MdflowError(
+                ErrorCode.CACHE_IO_ERROR,
+                f"cache entry {sha} unreadable: {e}",
+            ) from e
         self._stats.hit_count += 1
         return ConversionResult(
             markdown=markdown,

@@ -118,6 +118,27 @@ def test_cache_write_overwrites_existing(tmp_cache_dir: Path):
     assert got.markdown == "second"
 
 
+def test_cache_read_corrupt_meta_json_raises_cache_io_error(tmp_cache_dir: Path):
+    """Codex recommendation #5 (2026-05-22): a corrupted `meta.json`
+    must surface as `MdflowError(CACHE_IO_ERROR)` instead of leaking a
+    raw `json.JSONDecodeError`. PRD §8.1 defines CACHE_IO_ERROR as the
+    retryable cache failure code; today the enum exists but is unused.
+    """
+    from mdflow.core.errors import ErrorCode, MdflowError
+
+    cache = Cache(tmp_cache_dir)
+    sha = "a" * 64
+    # Plant a half-corrupt entry: result.md exists, meta.json is invalid.
+    entry = tmp_cache_dir / sha
+    entry.mkdir(parents=True)
+    (entry / "result.md").write_text("# x", encoding="utf-8")
+    (entry / "meta.json").write_text("{not valid json", encoding="utf-8")
+
+    with pytest.raises(MdflowError) as exc:
+        cache.read(sha)
+    assert exc.value.code is ErrorCode.CACHE_IO_ERROR
+
+
 def test_cache_purge_ignores_non_entry_files(tmp_cache_dir: Path):
     cache = Cache(tmp_cache_dir)
     cache.write("0" * 64, ConversionResult(markdown="x"), options={})
