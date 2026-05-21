@@ -1,8 +1,8 @@
 """Converter registry — registration + format-based dispatch.
 
-Incremental: this slice covers register() and select() (with
-UNSUPPORTED_FORMAT on miss and first-registered-wins on ties).
-list_formats() — used by the /capabilities endpoint — lands next.
+Full v1 surface: register(), select() (UNSUPPORTED_FORMAT on miss,
+first-registered-wins on ties), list_formats() (one row per
+(converter, advertised format) for /capabilities).
 """
 
 from __future__ import annotations
@@ -29,3 +29,16 @@ class Registry:
             ErrorCode.UNSUPPORTED_FORMAT,
             f"no converter for format={ctx.format!r}",
         )
+
+    def list_formats(self) -> list[dict]:
+        """Enumerate (ext, converter, requires_gpu) rows in registration order.
+
+        Used by `/capabilities`. Each advertised format produces one row, so a
+        fallback chain (e.g. PDF: Marker then PyMuPDF) shows up as multiple
+        rows for the same ext.
+        """
+        rows: list[dict] = []
+        for c in self._converters:
+            for ext in c.formats:
+                rows.append({"ext": ext, "converter": c.name, "requires_gpu": c.requires_gpu})
+        return rows

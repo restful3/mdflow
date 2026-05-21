@@ -1,7 +1,4 @@
-"""Registry — incremental: register + select dispatch.
-
-list_formats (used by /capabilities) lands in the follow-up slice.
-"""
+"""Registry — full v1 slice: register, select, list_formats."""
 
 import pytest
 
@@ -128,3 +125,81 @@ def test_select_unknown_when_only_refuser_registered():
     with pytest.raises(MdflowError) as exc:
         reg.select(_ctx("txt"))
     assert exc.value.code is ErrorCode.UNSUPPORTED_FORMAT
+
+
+def test_list_formats_empty_when_no_registrations():
+    assert Registry().list_formats() == []
+
+
+def test_list_formats_one_entry_per_advertised_format():
+    """A converter advertising N formats yields N rows."""
+
+    class _Multi:
+        name = "text"
+        formats = ("txt", "md", "csv")
+        requires_gpu = False
+
+        def can_handle(self, ctx):
+            return True
+
+        def convert(self, ctx, progress):
+            return ConversionResult(markdown="x")
+
+    reg = Registry()
+    reg.register(_Multi())
+    rows = reg.list_formats()
+    assert rows == [
+        {"ext": "txt", "converter": "text", "requires_gpu": False},
+        {"ext": "md", "converter": "text", "requires_gpu": False},
+        {"ext": "csv", "converter": "text", "requires_gpu": False},
+    ]
+
+
+def test_list_formats_preserves_registration_order():
+    reg = Registry()
+    reg.register(_Pdf())  # gpu
+    reg.register(_Txt())
+    rows = reg.list_formats()
+    assert [r["converter"] for r in rows] == ["pdf", "txt"]
+    assert [r["ext"] for r in rows] == ["pdf", "txt"]
+    assert [r["requires_gpu"] for r in rows] == [True, False]
+
+
+def test_list_formats_includes_duplicate_format_from_fallback_chain():
+    """PRD §8.2 fallback chain: same ext, different converters."""
+
+    class _PdfMarker:
+        name = "pdf-marker"
+        formats = ("pdf",)
+        requires_gpu = True
+
+        def can_handle(self, ctx):
+            return True
+
+        def convert(self, ctx, progress):
+            return ConversionResult(markdown="m")
+
+    class _PdfPyMuPDF:
+        name = "pdf-pymupdf"
+        formats = ("pdf",)
+        requires_gpu = False
+
+        def can_handle(self, ctx):
+            return True
+
+        def convert(self, ctx, progress):
+            return ConversionResult(markdown="p")
+
+    reg = Registry()
+    reg.register(_PdfMarker())
+    reg.register(_PdfPyMuPDF())
+    rows = reg.list_formats()
+    names = [(r["converter"], r["requires_gpu"]) for r in rows]
+    assert names == [("pdf-marker", True), ("pdf-pymupdf", False)]
+
+
+def test_list_formats_row_keys_are_stable():
+    reg = Registry()
+    reg.register(_Txt())
+    [row] = reg.list_formats()
+    assert set(row.keys()) == {"ext", "converter", "requires_gpu"}
