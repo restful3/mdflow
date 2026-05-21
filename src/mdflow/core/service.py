@@ -30,6 +30,9 @@ class ConvertRequest:
     data: bytes
     filename_hint: str | None
     options: dict[str, Any] = field(default_factory=dict)
+    # Explicit HTTP `Content-Type` header from a URL fetch (agreement
+    # §3.2 step 9 hint chain). None for local-file inputs.
+    content_type_hint: str | None = None
     # Populated by the API layer when the input is a URL (Task 14).
     fetch_metadata: dict[str, Any] | None = None
 
@@ -53,7 +56,11 @@ class ConversionService:
         req: ConvertRequest,
         progress: ProgressCallback = _noop_progress,
     ) -> ConvertResponse:
-        detection = detect_format(req.data, req.filename_hint)
+        detection = detect_format(
+            req.data,
+            req.filename_hint,
+            content_type_hint=req.content_type_hint,
+        )
         if detection.format is None:
             raise MdflowError(
                 ErrorCode.FORMAT_DETECT_FAILED,

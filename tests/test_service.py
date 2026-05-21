@@ -90,6 +90,26 @@ def test_convert_cache_key_includes_detected_format(service: ConversionService):
     assert csv_out.cached is False
 
 
+def test_convert_passes_content_type_hint_to_detect_format(service: ConversionService):
+    """Codex blocker #2 slice 2 (2026-05-21): ConvertRequest carries an
+    explicit Content-Type hint and ConversionService forwards it to
+    detect_format(). Without this wiring, a URL fetch with no path
+    extension and indeterminate magic (e.g. plain text served as
+    `Content-Type: text/plain`) still raises FORMAT_DETECT_FAILED even
+    though slice 1 already taught detect_format to consume the hint.
+    """
+    out = service.convert(
+        ConvertRequest(
+            data=b"plain text body\n",
+            filename_hint=None,
+            content_type_hint="text/plain; charset=utf-8",
+        )
+    )
+    assert out.detected_format == "txt"
+    assert out.converter_name == "text-passthrough"
+    assert out.result.markdown == "plain text body\n"
+
+
 def test_convert_progress_callback_invoked(service: ConversionService):
     seen: list[tuple[str, int]] = []
     service.convert(
