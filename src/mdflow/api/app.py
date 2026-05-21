@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from mdflow.api.admin import register_admin_routes
 from mdflow.converters.text import TextConverter
 from mdflow.core.cache import Cache
 from mdflow.core.registry import Registry
@@ -80,4 +81,5 @@ def create_app() -> FastAPI:
         uptime = time.monotonic() - app.state.started_at
         return {"ok": True, "uptime_s": uptime}
 
+    register_admin_routes(app)
     return app

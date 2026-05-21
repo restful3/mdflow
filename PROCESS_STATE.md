@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (Task 14 완료 — FastAPI app factory + lifespan + /healthz + 메모 #10 url_policy_from_settings)
+**최종 갱신**: 2026-05-22 (Task 15 완료 — admin endpoints /capabilities + /cache/{sha} GET/DELETE + /cache/purge)
 
 ---
 
@@ -79,20 +79,20 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M0.F (Service & API)** 진행 중 — Task 14까지 완료, Task 15\~17 대기
-- **테스트**: 162 passed / 1 skipped (`.venv/bin/python -m pytest -q`)
+- **현재 phase**: **M0.F (Service & API)** 거의 완료 — Task 15까지 완료, Task 16\~17 대기 (M0.G)
+- **테스트**: 169 passed / 1 skipped (`.venv/bin/python -m pytest -q`)
 - **린트**: `ruff check` 통과
-- **git**: 26+ commits, master 브랜치, 태그 없음 (가장 최근 `0f9b0f6 feat(m0): harden cache.write I/O paths (#5write + #6 + follow-up #2)`)
+- **git**: 27+ commits, master 브랜치, 태그 없음 (가장 최근 `5a63706 feat(m0): FastAPI app factory + /healthz + lifespan (Task 14)`)
 - **Codex 리뷰 상태**:
   - 차단 3건 (#1, #2, #3) — 모두 ACCEPT + 코드 반영 + commit 완료
   - 권고 5건 — #4·#5read commit, #5write·#6 코드 반영 + **follow-up 라운드 완료**(`2026-05-22-m0-cache-write-mkdtemp-codex.md`): 추가 #2(mkdtemp OSError wrap) ACCEPT + 적용, 추가 #1(publish race) DEFER (M1); 커밋 보류, #7 DEFER (M1), #8 차단 TDD에 흡수
   - 메모 3건 — #9 DEFER (v1.1), #10 Task 14에서 처리, #11 DEFER (M2)
 - **다음 액션 (다음 1\~3)**:
-  1. **Task 15** 진입: admin endpoints — `src/mdflow/api/admin.py` + `register_admin_routes(app)` 호출을 `create_app`에 추가. `/capabilities`, `/cache/{sha}` GET/DELETE, `/cache/purge`. TDD
-  2. **Task 16** smoke test (end-to-end skeleton 검증)
+  1. **Task 16** M0 smoke test (end-to-end skeleton 검증) — TDD
+  2. **Task 14\~17 묶음 Codex 리뷰** (M0 완료 직전, Task 17 태그 전)
   3. **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화
 
-작업 디렉토리 깨끗 (Task 14 commit 직후 갱신 예정).
+작업 디렉토리 깨끗 (Task 15 commit 직후 갱신 예정).
 
 ---
 
@@ -281,11 +281,13 @@ PRD 14섹션 구성:
   - 메모 #10 `url_policy_from_settings(settings) -> UrlPolicy` helper 추가 (URL 6개 설정 → UrlPolicy, MB→bytes 변환). lifespan에서 `app.state.url_policy`로 boot 시 1회 구성
   - **admin 라우트(`register_admin_routes`)는 Task 15로 분리** — 플랜 스니펫은 Task 14에 포함했으나 admin.py 미존재라 import 제거
   - TDD: `test_healthz_returns_ok` + `test_app_lifespan_initializes_state` + `test_url_policy_from_settings_maps_fields` RED(`ModuleNotFoundError`) 확인 후 GREEN (3 passed)
-- [ ] **Task 15** Admin endpoints (`/capabilities`, `/cache/{sha}` GET / DELETE, `/cache/purge`) — `src/mdflow/api/admin.py` + `create_app`에 `register_admin_routes(app)` 추가
+- [x] **Task 15** Admin endpoints — `src/mdflow/api/admin.py` (`register_admin_routes(app)`) + `create_app`에서 호출. `GET /capabilities` (gpu/cuda/cpu_workers + `registry.list_formats()` + `cache.stats()`), `GET /cache/{sha256}` (invalid sha → 400, miss → 404), `DELETE /cache/{sha256}` (miss → 404, 성공 → `{"ok": True}`), `POST /cache/purge` (`{"removed": N}`). TDD 7 tests RED→GREEN
+  - **테스트 격리 안전장치**: `tests/api/conftest.py` autouse fixture가 `MDFLOW_CACHE_DIR`을 per-test tmp dir로 리다이렉트. 없으면 `/cache/purge` 테스트가 사용자의 실제 `~/.cache/mdflow` 전체를 삭제함
 
 ### 6.7 M0.G — Smoke & tag [PENDING]
 
 - [ ] **Task 16** M0 smoke test (end-to-end skeleton 검증)
+- [ ] **Task 14\~17 묶음 Codex 리뷰** — M0 완료 직전(Task 17 태그 전) 1회. 사용자 결정 2026-05-22: per-task가 아니라 Task 1\~13 관행처럼 API 표면(M0.F+M0.G)을 한 묶음으로 리뷰. Task 14·15는 같은 `api/app.py`/`admin.py`를 건드리므로 개별 리뷰는 중복
 - [ ] **Task 17** `v0.0.1-m0` 태그 + M0 완료 문서화
 
 ### 6.8 Codex 리뷰 트랙 (Task 1\~13)
@@ -341,7 +343,8 @@ PRD 14섹션 구성:
 
 - **Task 14 lifespan 작성 시점**: `ConcurrencyPool(cpu_workers=caps.cpu_workers)`을 반드시 lifespan async 컨텍스트 내부에서 인스턴스화. `asyncio.Semaphore`는 생성 시점의 event loop에 바인딩됨 (R3)
 - **메모 #10 helper 시그니처**: `def url_policy_from_settings(settings: Settings) -> UrlPolicy` 형태로 Task 14에 포함. Settings 9개 env 중 URL 관련 6개 (`MDFLOW_ALLOW_PRIVATE_URLS`, `MDFLOW_URL_MAX_REDIRECTS`, `MDFLOW_URL_CONNECT_TIMEOUT_S`, `MDFLOW_URL_READ_TIMEOUT_S`, `MDFLOW_URL_USER_AGENT`, `MDFLOW_MAX_URL_INPUT_MB`) 매핑
-- **Task 17 태그 시점**: 모든 차단 + 권고 #5write/#6 commit 완료 후. ruff clean + pytest 158+ pass + smoke test 통과 확인 후 `v0.0.1-m0` 태그
+- **Task 17 태그 시점**: 모든 차단 + 권고 #5write/#6 commit 완료 후. ruff clean + pytest pass + smoke test 통과 + **Task 14\~17 묶음 Codex 리뷰 ACCEPT** 확인 후 `v0.0.1-m0` 태그
+- **Codex 리뷰 케이던스 (사용자 결정 2026-05-22)**: M0 잔여는 per-task 리뷰가 아니라 **Task 14\~17을 M0 완료 직전 1회 묶음 리뷰**. 근거: Task 1\~13 관행과 일관 + API 표면이 한 묶음으로 응집 + Task 14·15가 같은 파일을 건드려 개별 리뷰 중복. 이후 milestone도 별도 지시 없으면 milestone 완료 직전 묶음 리뷰를 기본값으로
 
 ---
 
