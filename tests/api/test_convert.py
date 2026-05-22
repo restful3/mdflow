@@ -529,4 +529,5 @@ def test_convert_ppt_streams_started_done(sample_ppt_bytes):
     by_event, kinds = _run_convert("sample.ppt", sample_ppt_bytes, "application/vnd.ms-powerpoint")
     assert kinds[0] == "started" and kinds[-1] == "done"
     assert by_event["started"]["converter"] == "office-libreoffice"
+    assert by_event["started"]["gpu"] is False
     assert "First Slide" in by_event["done"]["markdown"]
