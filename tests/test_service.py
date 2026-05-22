@@ -133,3 +133,34 @@ def test_convert_progress_callback_invoked(service: ConversionService):
     )
     # TextConverter ends with ("done", 100)
     assert seen[-1] == ("done", 100)
+
+
+def test_lookup_miss_selects_converter_and_returns_no_cache(tmp_cache_dir):
+    registry = Registry()
+    registry.register(TextConverter())
+    service = ConversionService(registry=registry, cache=Cache(tmp_cache_dir))
+
+    lr = service.lookup(ConvertRequest(data=b"hello", filename_hint="a.txt"))
+
+    assert lr.cached is None
+    assert lr.cached_at is None
+    assert lr.detected_format == "txt"
+    assert lr.converter is not None
+    assert lr.converter.name == "text-passthrough"
+
+
+def test_run_conversion_then_lookup_hit(tmp_cache_dir):
+    registry = Registry()
+    registry.register(TextConverter())
+    service = ConversionService(registry=registry, cache=Cache(tmp_cache_dir))
+    req = ConvertRequest(data=b"hello", filename_hint="a.txt")
+
+    lr1 = service.lookup(req)
+    resp = service.run_conversion(req, lr1)
+    assert resp.cached is False
+    assert resp.result.markdown == "hello"
+
+    lr2 = service.lookup(req)
+    assert lr2.cached is not None
+    assert lr2.cached_at is not None
+    assert lr2.cached.markdown == "hello"

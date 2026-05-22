@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from mdflow.converters.base import ConversionContext, ConversionResult
+from mdflow.converters.base import ConversionContext, ConversionResult, Converter
 from mdflow.core.cache import Cache, compute_cache_key
 from mdflow.core.errors import ErrorCode, MdflowError
 from mdflow.core.format_detect import detect_format
@@ -46,16 +46,23 @@ class ConvertResponse:
     converter_name: str
 
 
+@dataclass
+class LookupResult:
+    sha: str
+    detected_format: str
+    detection_source: str
+    detection_warnings: list[str]
+    cached: ConversionResult | None
+    cached_at: str | None
+    converter: Converter | None  # selected on miss; None on hit
+
+
 class ConversionService:
     def __init__(self, registry: Registry, cache: Cache) -> None:
         self.registry = registry
         self.cache = cache
 
-    def convert(
-        self,
-        req: ConvertRequest,
-        progress: ProgressCallback = _noop_progress,
-    ) -> ConvertResponse:
+    def lookup(self, req: ConvertRequest) -> LookupResult:
         detection = detect_format(
             req.data,
             req.filename_hint,
@@ -66,19 +73,18 @@ class ConversionService:
                 ErrorCode.FORMAT_DETECT_FAILED,
                 "extension and magic-bytes both unknown",
             )
-
         sha = compute_cache_key(req.data, req.options, detected_format=detection.format)
-
         cached = self.cache.read(sha)
         if cached is not None:
-            return ConvertResponse(
-                result=cached,
-                sha256=sha,
-                cached=True,
+            return LookupResult(
+                sha=sha,
                 detected_format=detection.format,
-                converter_name=cached.metadata.get("converter", ""),
+                detection_source=detection.source,
+                detection_warnings=detection.warnings,
+                cached=cached,
+                cached_at=self.cache.cached_at(sha),
+                converter=None,
             )
-
         ctx = ConversionContext(
             data=req.data,
             filename_hint=req.filename_hint,
@@ -87,25 +93,65 @@ class ConversionService:
             metadata={"format": detection.format},
         )
         converter = self.registry.select(ctx)
-        result = converter.convert(ctx, progress)
+        return LookupResult(
+            sha=sha,
+            detected_format=detection.format,
+            detection_source=detection.source,
+            detection_warnings=detection.warnings,
+            cached=None,
+            cached_at=None,
+            converter=converter,
+        )
+
+    def run_conversion(
+        self,
+        req: ConvertRequest,
+        lookup: LookupResult,
+        progress: ProgressCallback = _noop_progress,
+    ) -> ConvertResponse:
+        assert lookup.converter is not None  # caller guarantees a miss
+        ctx = ConversionContext(
+            data=req.data,
+            filename_hint=req.filename_hint,
+            format=lookup.detected_format,
+            options=req.options,
+            metadata={"format": lookup.detected_format},
+        )
+        result = lookup.converter.convert(ctx, progress)
 
         enriched_meta = dict(result.metadata)
-        enriched_meta.setdefault("converter", converter.name)
-        enriched_meta.setdefault("format", detection.format)
-        enriched_meta.setdefault("detection_source", detection.source)
-        if detection.warnings:
-            enriched_meta.setdefault("detection_warnings", detection.warnings)
+        enriched_meta.setdefault("converter", lookup.converter.name)
+        enriched_meta.setdefault("format", lookup.detected_format)
+        enriched_meta.setdefault("detection_source", lookup.detection_source)
+        if lookup.detection_warnings:
+            enriched_meta.setdefault("detection_warnings", lookup.detection_warnings)
         result = ConversionResult(
             markdown=result.markdown,
             metadata=enriched_meta,
             assets=result.assets,
         )
 
-        self.cache.write(sha, result, options=req.options)
+        self.cache.write(lookup.sha, result, options=req.options)
         return ConvertResponse(
             result=result,
-            sha256=sha,
+            sha256=lookup.sha,
             cached=False,
-            detected_format=detection.format,
-            converter_name=converter.name,
+            detected_format=lookup.detected_format,
+            converter_name=lookup.converter.name,
         )
+
+    def convert(
+        self,
+        req: ConvertRequest,
+        progress: ProgressCallback = _noop_progress,
+    ) -> ConvertResponse:
+        lr = self.lookup(req)
+        if lr.cached is not None:
+            return ConvertResponse(
+                result=lr.cached,
+                sha256=lr.sha,
+                cached=True,
+                detected_format=lr.detected_format,
+                converter_name=lr.cached.metadata.get("converter", ""),
+            )
+        return self.run_conversion(req, lr, progress)
