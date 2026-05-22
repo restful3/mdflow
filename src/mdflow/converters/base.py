@@ -12,6 +12,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+# Progress callback: converters call this synchronously from WITHIN convert(),
+# before convert() returns. The SSE pump (api/convert.py) relies on this:
+# progress events are marshalled to the event loop via call_soon_threadsafe
+# in FIFO order, so calling progress() after convert() returns (e.g. from a
+# background thread) is OUTSIDE the contract and can drop the final event.
 ProgressCallback = Callable[[str, int], None]
 
 

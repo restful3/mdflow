@@ -68,11 +68,11 @@ def register_convert_route(app: FastAPI) -> None:
         url: str | None = None
 
         if content_type.startswith("multipart/form-data"):
-            form = await request.form()
-            upload = form.get("file")
-            if isinstance(upload, UploadFile):
-                file_bytes = await upload.read(max_bytes + 1)
-                filename = upload.filename
+            async with request.form() as form:
+                upload = form.get("file")
+                if isinstance(upload, UploadFile):
+                    file_bytes = await upload.read(max_bytes + 1)
+                    filename = upload.filename
         elif content_type.startswith("application/json"):
             try:
                 body = await request.json()
