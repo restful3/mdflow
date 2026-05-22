@@ -5,6 +5,7 @@ import json
 from fastapi.testclient import TestClient
 
 from mdflow.api.app import create_app
+from tests.golden import assert_golden
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict]]:
@@ -222,3 +223,43 @@ def test_convert_streams_progress_events_in_order(monkeypatch):
     assert kinds[-1] == "done"
     progress_stages = [d["stage"] for k, d in events if k == "progress"]
     assert progress_stages == ["parse", "render"]
+
+
+def _run_convert(filename: str, data: bytes, mime: str):
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.post("/convert", files={"file": (filename, data, mime)})
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    return dict(events), [e[0] for e in events]
+
+
+def test_convert_docx_streams_started_done(sample_docx_bytes):
+    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    by_event, kinds = _run_convert("sample.docx", sample_docx_bytes, mime)
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "docx-mammoth"
+    assert_golden(by_event["done"]["markdown"], "docx/sample.md")
+
+
+def test_convert_pptx_streams_started_done(sample_pptx_bytes):
+    mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    by_event, kinds = _run_convert("sample.pptx", sample_pptx_bytes, mime)
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "pptx-python-pptx"
+    assert_golden(by_event["done"]["markdown"], "pptx/sample.md")
+
+
+def test_convert_xlsx_streams_started_done(sample_xlsx_bytes):
+    mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    by_event, kinds = _run_convert("sample.xlsx", sample_xlsx_bytes, mime)
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "xlsx-openpyxl"
+    assert_golden(by_event["done"]["markdown"], "xlsx/sample.md")
+
+
+def test_convert_html_streams_started_done(sample_html):
+    by_event, kinds = _run_convert("sample.html", sample_html.encode("utf-8"), "text/html")
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "html-trafilatura"
+    assert_golden(by_event["done"]["markdown"], "html/sample.md")
