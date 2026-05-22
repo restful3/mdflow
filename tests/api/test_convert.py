@@ -114,3 +114,43 @@ def test_convert_empty_multipart_returns_400():
     with TestClient(app) as client:
         r = client.post("/convert", data={"notfile": "x"})
     assert r.status_code == 400
+
+
+def test_convert_streams_progress_events_in_order(monkeypatch):
+    """A converter that reports progress must surface ordered progress
+    events between started and done.
+    """
+    from mdflow.converters.base import ConversionResult
+
+    class ProgressyConverter:
+        name = "progressy"
+        formats = ("txt",)
+        requires_gpu = False
+
+        def can_handle(self, ctx):
+            return ctx.format in self.formats
+
+        def convert(self, ctx, progress):
+            progress("parse", 25)
+            progress("render", 75)
+            return ConversionResult(markdown="done-body")
+
+    app = create_app()
+
+    def _register(state_app):
+        from mdflow.core.registry import Registry
+
+        reg = Registry()
+        reg.register(ProgressyConverter())
+        state_app.state.registry = reg
+        state_app.state.service.registry = reg
+
+    with TestClient(app) as client:
+        _register(app)
+        r = client.post("/convert", files={"file": ("a.txt", b"anything", "text/plain")})
+    events = _parse_sse(r.text)
+    kinds = [e[0] for e in events]
+    assert kinds[0] == "started"
+    assert kinds[-1] == "done"
+    progress_stages = [d["stage"] for k, d in events if k == "progress"]
+    assert progress_stages == ["parse", "render"]
