@@ -79,7 +79,7 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M1a (SSE 인프라) 완료 — Codex 최종 승인(`===CODEX_FINAL_APPROVAL===`)**. M1a Task 0\~8 TDD + per-task 2단계 리뷰 + opus 최종 리뷰 + Codex 1차 리뷰(차단 2/권고 1/메모1 반영) + **Codex 2차 재리뷰 최종 승인**. **다음: M1b**
+- **현재 phase**: **M1a 완료(Codex 최종 승인) → M1b 설계 완료, plan 대기**. M1a: Task 0\~8 TDD + per-task 2단계 리뷰 + opus 최종 리뷰 + Codex 1·2차 리뷰 최종 승인. M1b: 브레인스토밍 완료, 설계 문서 작성됨(`docs/specs/2026-05-22-m1b-office-converters-design.md`). **다음: spec 검토 → writing-plans**
 - **테스트**: **191 passed / 1 skipped** (`.venv/bin/python -m pytest`; M1a로 +16; Codex 반영으로 +5)
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
 - **git**: master 브랜치, 태그 **`v0.0.1-m0`**, 트리 깨끗. M1a 16 commits (`b36836b`\~`dd761c7`). 가장 최근 `dd761c7 docs/refactor(m1): document ProgressCallback sync invariant + close upload form`
@@ -101,9 +101,9 @@
   - **2차 재리뷰 (round-2)**: 위 반영분(`git diff 96ceffd..HEAD`)을 Codex에 재송부 → 첫 줄 정확히 `===CODEX_FINAL_APPROVAL===` 출력. 추가 수정 파일 없음 = **잔존 이견 0건, M1a 최종 확정**. (Codex가 화면 토큰만 출력하고 별도 round-2 파일은 미생성 — 승인이므로 정상)
 - **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건**. #1(delete/purge OSError)·#4(shutdown in-flight) DEFER M1. **#3(pool↔service)는 M1a에서 해소**
 - **다음 액션 (다음 1\~3)**:
-  1. **M1b** (docx/pptx/xlsx/html 컨버터 + 골든 출력) brainstorming → plan
-  2. M1 잔여 DEFER 항목(§7) 중 M1b와 묶을 것 선별 (cache delete/purge OSError 정규화, shutdown/disconnect 정책 등)
-  3. M1b 착수 시 `language_hint` 옵션(M0 R4 흡수)·URL fetch temp file streaming(Codex 권고 #7) 등 M1 잔여 기능 통합 검토
+  1. **M1b 설계 완료** (`docs/specs/2026-05-22-m1b-office-converters-design.md`) — 사용자 spec 검토 후 `superpowers:writing-plans`로 구현 계획 작성 → subagent-driven 구현
+  2. M1 잔여 DEFER 항목은 별도 "M1 hardening" 슬라이스로 분리 (cache delete/purge OSError 정규화, shutdown/disconnect 정책, URL temp streaming, language_hint) — M1b 범위에서 제외 확정
+  3. M1b 구현 후 Codex 묶음 리뷰(milestone 케이던스)
 
 - **M1a 핵심 설계 결정** (계획/스펙에 상세, 구현으로 확정됨):
   - async 핸들러 orchestrate, `ConversionService`는 sync 유지. asyncio.Queue + `call_soon_threadsafe`로 스레드풀 progress 펌프 (Task 8 순서 테스트로 검증)
@@ -383,7 +383,11 @@ PRD 14섹션 구성:
 > - 실행: Subagent-Driven Development. 10 commits `b36836b`\~`17dd70e`, 186 passed/1 skipped, ruff clean
 > - 다음: Task 9 Step 3 = M1a Codex 묶음 리뷰
 >
-> **M1b [미착수]** — docx/pptx/xlsx/html 컨버터 + 골든 출력. M1a Codex 리뷰 반영 후 brainstorming→plan.
+> **M1b [설계 완료, plan 대기]** — docx/pptx/xlsx/html 컨버터 + 골든 출력.
+> - 설계: `docs/specs/2026-05-22-m1b-office-converters-design.md` (브레인스토밍 산출물)
+> - 확정 결정: 4종 한 spec / 코드-생성 fixture / 전체-파일 골든 exact 매칭 / 컨버터에만 집중(cross-cutting defer) / docx=mammoth→HTML→markdownify / 이미지 드롭(alt는 markdownify 경로 best-effort)
+> - 컨버터: `docx-mammoth`, `pptx-python-pptx`, `xlsx-openpyxl`, `html-trafilatura` + 공유 `_html_to_md` 헬퍼
+> - 다음: 사용자 spec 검토 → `superpowers:writing-plans`로 구현 계획 작성 → subagent-driven 구현
 
 - [x] **M1a** `/convert` SSE 핸들러 (`event: started | progress | cached | done | error`) + service lookup/run_conversion 분리 + cpu_executor 펌프 + url fetch 통합 — **구현 완료** (Task 0\~8). 새 파일 `src/mdflow/api/convert.py`
 - [ ] DOCX 컨버터 (mammoth + python-docx 보강) — M1b
