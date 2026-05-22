@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -85,6 +86,27 @@ async def _run_conversion_stream(
         )
         return
     yield _sse("done", _done_event(resp.result, fetch_meta))
+
+
+async def _metered(gen: AsyncIterator[str], metrics: Any) -> AsyncIterator[str]:
+    """Wrap the SSE stream to record one metrics sample per request.
+
+    Observes the terminal event chunk (event: done | event: error) and
+    records success/latency once in finally. A client disconnect closes the
+    generator with no terminal event, recorded conservatively as a failure.
+    The inner stream logic is untouched (single record point).
+    """
+    t0 = time.monotonic()
+    outcome = "error"
+    try:
+        async for chunk in gen:
+            if chunk.startswith("event: done"):
+                outcome = "done"
+            elif chunk.startswith("event: error"):
+                outcome = "error"
+            yield chunk
+    finally:
+        metrics.record(success=(outcome == "done"), latency_s=time.monotonic() - t0)
 
 
 def register_convert_route(app: FastAPI) -> None:
@@ -234,4 +256,7 @@ def register_convert_route(app: FastAPI) -> None:
                 async for chunk in _run_conversion_stream(lr, task, q, fetch_meta):
                     yield chunk
 
-        return StreamingResponse(stream(), media_type="text/event-stream")
+        return StreamingResponse(
+            _metered(stream(), request.app.state.metrics),
+            media_type="text/event-stream",
+        )

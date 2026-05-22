@@ -21,16 +21,23 @@ def _mdflow_http_error(e: MdflowError) -> HTTPException:
     )
 
 
+def _hit_rate(stats: dict) -> float:
+    total = stats.get("hit_count", 0) + stats.get("miss_count", 0)
+    return round(stats.get("hit_count", 0) / total, 4) if total else 0.0
+
+
 def register_admin_routes(app: FastAPI) -> None:
     @app.get("/capabilities")
     def capabilities(request: Request) -> dict:
         state = request.app.state
+        cache_stats = state.cache.stats()
         return {
             "gpu": state.capabilities.gpu,
             "cuda_version": state.capabilities.cuda_version,
             "cpu_workers": state.capabilities.cpu_workers,
             "formats": state.registry.list_formats(),
-            "cache": state.cache.stats(),
+            "cache": cache_stats,
+            "metrics": {**state.metrics.snapshot(), "cache_hit_rate": _hit_rate(cache_stats)},
         }
 
     @app.get("/cache/{sha256}")

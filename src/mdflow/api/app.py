@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from mdflow.api.admin import register_admin_routes
 from mdflow.api.convert import register_convert_route
 from mdflow.core.cache import Cache
+from mdflow.core.metrics import Metrics
 from mdflow.core.service import ConversionService
 from mdflow.mcp.server import build_mcp
 from mdflow.runtime.capabilities import Capabilities, detect
@@ -49,6 +50,7 @@ async def _lifespan(app: FastAPI):
     app.state.cache = cache
     app.state.pool = pool
     app.state.service = service
+    app.state.metrics = Metrics()
     app.state.url_policy = url_policy_from_settings(settings)
     try:
         yield
