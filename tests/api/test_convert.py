@@ -351,3 +351,17 @@ async def test_gpu_converter_emits_queued_when_semaphore_busy():
     assert kinds.index("queued") < kinds.index("started")
     assert kinds[-1] == "done"
     assert dict(events)["queued"]["reason"] == "gpu_busy"
+
+
+def test_convert_pdf_streams_started_done(sample_pdf_bytes):
+    by_event, kinds = _run_convert("sample.pdf", sample_pdf_bytes, "application/pdf")
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "pdf-pymupdf4llm"
+    assert by_event["started"]["gpu"] is False
+    assert_golden(by_event["done"]["markdown"], "pdf/sample.md")
+
+
+def test_convert_corrupted_pdf_streams_conversion_failed():
+    by_event, kinds = _run_convert("broken.pdf", b"not a real pdf at all", "application/pdf")
+    assert kinds[-1] == "error"
+    assert by_event["error"]["code"] == "CONVERSION_FAILED"

@@ -21,6 +21,7 @@ from mdflow.api.admin import register_admin_routes
 from mdflow.api.convert import register_convert_route
 from mdflow.converters.docx import DocxConverter
 from mdflow.converters.html import HtmlConverter
+from mdflow.converters.pdf import PdfConverter
 from mdflow.converters.pptx import PptxConverter
 from mdflow.converters.spreadsheet import XlsxConverter
 from mdflow.converters.text import TextConverter
@@ -63,6 +64,7 @@ async def _lifespan(app: FastAPI):
     registry.register(PptxConverter())
     registry.register(XlsxConverter())
     registry.register(HtmlConverter())
+    registry.register(PdfConverter())
 
     cache = Cache(settings.cache_dir)
     pool = ConcurrencyPool(cpu_workers=capabilities.cpu_workers)
