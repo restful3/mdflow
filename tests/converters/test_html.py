@@ -33,9 +33,9 @@ def test_html_fallback_when_no_article(sample_html):
     assert out.metadata["extractor"] == "markdownify-fallback"
 
 
-def test_html_progress_ends_done(sample_html):
+def test_html_progress_ends_done():
     seen: list[tuple[str, int]] = []
-    HtmlConverter().convert(_ctx(sample_html), lambda s, p: seen.append((s, p)))
+    HtmlConverter().convert(_ctx("<p>x</p>"), lambda s, p: seen.append((s, p)))
     assert seen[-1] == ("done", 100)
 
 
