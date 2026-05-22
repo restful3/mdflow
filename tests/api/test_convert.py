@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mdflow.api.app import create_app
+from tests.conftest import requires_soffice
 from tests.golden import assert_golden
 
 
@@ -512,3 +513,20 @@ async def test_gpu_cached_hit_skips_gpu_branch_even_when_semaphore_busy():
                 app.state.pool.gpu_semaphore.release()
     kinds = [k for k, _ in _parse_sse(r2.text)]
     assert kinds == ["cached", "done"]
+
+
+@requires_soffice
+def test_convert_doc_streams_started_done(sample_doc_bytes):
+    by_event, kinds = _run_convert("sample.doc", sample_doc_bytes, "application/msword")
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "office-libreoffice"
+    assert by_event["started"]["gpu"] is False
+    assert "Document Title" in by_event["done"]["markdown"]
+
+
+@requires_soffice
+def test_convert_ppt_streams_started_done(sample_ppt_bytes):
+    by_event, kinds = _run_convert("sample.ppt", sample_ppt_bytes, "application/vnd.ms-powerpoint")
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "office-libreoffice"
+    assert "First Slide" in by_event["done"]["markdown"]
