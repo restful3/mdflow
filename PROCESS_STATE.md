@@ -79,7 +79,7 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M1a (SSE 인프라) 구현 완료 + Codex 묶음 리뷰 반영 완료**. M1a Task 0\~8 TDD + per-task 2단계 리뷰 + opus 최종 리뷰 + **Codex 리뷰 차단 2건/권고 1건/메모1 모두 반영**. **다음: M1b** (또는 선택적으로 Codex 변경분 재확인)
+- **현재 phase**: **M1a (SSE 인프라) 완료 — Codex 최종 승인(`===CODEX_FINAL_APPROVAL===`)**. M1a Task 0\~8 TDD + per-task 2단계 리뷰 + opus 최종 리뷰 + Codex 1차 리뷰(차단 2/권고 1/메모1 반영) + **Codex 2차 재리뷰 최종 승인**. **다음: M1b**
 - **테스트**: **191 passed / 1 skipped** (`.venv/bin/python -m pytest`; M1a로 +16; Codex 반영으로 +5)
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
 - **git**: master 브랜치, 태그 **`v0.0.1-m0`**, 트리 깨끗. M1a 16 commits (`b36836b`\~`dd761c7`). 가장 최근 `dd761c7 docs/refactor(m1): document ProgressCallback sync invariant + close upload form`
@@ -98,11 +98,12 @@
   - **권고 1 (JSON 입력 검증) — FIXED** `08feff0`. 비-object body/비-string url/invalid JSON → pre-stream 400 (raw 500 방지)
   - **메모 1 + 권고 3 — APPLIED** `dd761c7`. ProgressCallback "synchronous, in-call only" invariant 문서화 + `async with request.form()`로 업로드 리소스 close
   - **권고 2 (client disconnect 시 task 미취소) — DEFER** (Codex도 동의). §7 M1a 알려진 제약 #2 유지. M1b/M2 긴 변환 붙을 때 처리
+  - **2차 재리뷰 (round-2)**: 위 반영분(`git diff 96ceffd..HEAD`)을 Codex에 재송부 → 첫 줄 정확히 `===CODEX_FINAL_APPROVAL===` 출력. 추가 수정 파일 없음 = **잔존 이견 0건, M1a 최종 확정**. (Codex가 화면 토큰만 출력하고 별도 round-2 파일은 미생성 — 승인이므로 정상)
 - **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건**. #1(delete/purge OSError)·#4(shutdown in-flight) DEFER M1. **#3(pool↔service)는 M1a에서 해소**
 - **다음 액션 (다음 1\~3)**:
-  1. (선택) Codex에 변경분 재확인 송부 — 차단 2건이 fix됐으므로 한 라운드 재리뷰로 루프 종료 가능. 사용자 미지시 시 생략 가능
-  2. **M1b** (docx/pptx/xlsx/html 컨버터 + 골든 출력) brainstorming → plan
-  3. M1 잔여 DEFER 항목(§7) 중 M1b와 묶을 것 선별 (cache delete/purge OSError 정규화, shutdown/disconnect 정책 등)
+  1. **M1b** (docx/pptx/xlsx/html 컨버터 + 골든 출력) brainstorming → plan
+  2. M1 잔여 DEFER 항목(§7) 중 M1b와 묶을 것 선별 (cache delete/purge OSError 정규화, shutdown/disconnect 정책 등)
+  3. M1b 착수 시 `language_hint` 옵션(M0 R4 흡수)·URL fetch temp file streaming(Codex 권고 #7) 등 M1 잔여 기능 통합 검토
 
 - **M1a 핵심 설계 결정** (계획/스펙에 상세, 구현으로 확정됨):
   - async 핸들러 orchestrate, `ConversionService`는 sync 유지. asyncio.Queue + `call_soon_threadsafe`로 스레드풀 progress 펌프 (Task 8 순서 테스트로 검증)
