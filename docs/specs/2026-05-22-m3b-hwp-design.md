@@ -132,6 +132,7 @@ M3a의 `LIBREOFFICE_UNAVAILABLE = ("LIBREOFFICE_UNAVAILABLE", False)` 선례와 
 - **시스템 의존 추가 없음**: lxml(이미 trafilatura/bs4 스택에 존재)이 XSLT 백엔드. `xsltproc`/`libxslt`, 한국어 폰트 모두 불필요(텍스트 추출이지 렌더링이 아님).
 - **Docker**: M3a처럼 별도 폰트 불요. `pip install '.[hwp]'`만.
 - **pyhwp 성숙도 리스크(기록)**: pyhwp는 베타(0.1b15, 마지막 릴리스 ~2016). 일부 정상 hwp가 실패할 수 있고(평가 8/10), 유지보수가 비활성. `[hwp]`를 **격리된 optional extra**로 두어 미설치 시 다른 포맷에 영향 0, 설치 시 실패는 `CONVERSION_FAILED`로 안전 표면화.
+- **라이선스 표기(운영자용, Codex 권고 3)**: mdflow 본체는 MIT지만 `[hwp]` extra가 끌어오는 `pyhwp`는 **AGPL-3.0**이다. `pip install 'mdflow[hwp]'`로 HWP 지원을 켜는 운영자는 AGPL 의존을 설치하게 됨을 인지해야 한다(별도 프로세스 의존이며 mdflow 코어 코드와 정적 링크되지 않음). base 설치(`pip install mdflow`)는 AGPL 의존을 포함하지 않는다. (README 신설 시 이 단락을 옮긴다.)
 
 ---
 

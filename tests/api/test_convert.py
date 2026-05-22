@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -567,6 +568,27 @@ def test_convert_hwp_streams_started_done(monkeypatch):
     assert by_event["started"]["converter"] == "hwp-pyhwp"
     assert by_event["started"]["gpu"] is False
     assert "HWP Heading" in by_event["done"]["markdown"]
+
+
+def test_convert_hwp_library_error_streams_conversion_failed(monkeypatch):
+    from mdflow.converters.hwp import HwpConverter
+
+    def boom(self, src_path):
+        raise ValueError("lxml.etree.XMLSyntaxError simulated")
+
+    monkeypatch.setattr(HwpConverter, "_hwp_to_xhtml", boom)
+    by_event, kinds = _run_convert("sample.hwp", b"fake-hwp", "application/x-hwp")
+    assert kinds[-1] == "error"
+    assert by_event["error"]["code"] == "CONVERSION_FAILED"
+
+
+def test_convert_hwp_missing_pyhwp_streams_error(monkeypatch):
+    monkeypatch.setitem(sys.modules, "hwp5.xmlmodel", None)
+    monkeypatch.setitem(sys.modules, "hwp5.hwp5html", None)
+    by_event, kinds = _run_convert("sample.hwp", b"fake-hwp", "application/x-hwp")
+    assert kinds[-1] == "error"
+    assert by_event["error"]["code"] == "HWP_UNAVAILABLE"
+    assert by_event["error"]["retryable"] is False
 
 
 @pytest.mark.skipif(
