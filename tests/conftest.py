@@ -149,7 +149,8 @@ def _soffice_to(src_bytes: bytes, src_ext: str, dst_ext: str) -> bytes:
     formats. Caller must be guarded by @requires_soffice.
     """
     soffice = shutil.which("soffice")
-    assert soffice is not None, "guarded by @requires_soffice"
+    if soffice is None:
+        pytest.skip("LibreOffice (soffice) not installed")
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / f"in.{src_ext}"
         src.write_bytes(src_bytes)
