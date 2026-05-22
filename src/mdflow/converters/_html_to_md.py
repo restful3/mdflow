@@ -8,11 +8,13 @@ best-effort); docx passes strip_images=True to drop them entirely.
 
 from __future__ import annotations
 
+from typing import Any
+
 from markdownify import markdownify
 
 
 def html_to_markdown(html: str, *, strip_images: bool = False) -> str:
-    options: dict = {"heading_style": "ATX"}
+    options: dict[str, Any] = {"heading_style": "ATX"}
     if strip_images:
         options["strip"] = ["img"]
     return markdownify(html, **options).strip()

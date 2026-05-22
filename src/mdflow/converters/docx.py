@@ -10,6 +10,7 @@ ConversionService.run_conversion (wrapped as CONVERSION_FAILED).
 from __future__ import annotations
 
 import io
+from typing import Any
 
 import mammoth
 
@@ -37,7 +38,7 @@ class DocxConverter:
         )
         progress("render", 60)
         markdown = html_to_markdown(result.value, strip_images=True)
-        metadata: dict = {}
+        metadata: dict[str, Any] = {}
         warnings = [m.message for m in result.messages]
         if warnings:
             metadata["warnings"] = warnings

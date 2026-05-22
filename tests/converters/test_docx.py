@@ -32,3 +32,8 @@ def test_docx_progress_ends_done(sample_docx_bytes):
 def test_docx_golden(sample_docx_bytes):
     out = DocxConverter().convert(_ctx(sample_docx_bytes), lambda s, p: None)
     assert_golden(out.markdown, "docx/sample.md")
+
+
+def test_docx_clean_file_has_no_warnings(sample_docx_bytes):
+    out = DocxConverter().convert(_ctx(sample_docx_bytes), lambda s, p: None)
+    assert out.metadata == {}
