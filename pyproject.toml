@@ -17,6 +17,7 @@ dependencies = [
     "httpx>=0.26",
     "python-magic>=0.4.27",
     "chardet>=5.2",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
