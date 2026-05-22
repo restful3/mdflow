@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (**M2a 구현 완료** — PDF 컨버터(pymupdf4llm) + GPU 라우팅 배관(`gpu_lock`+`queued`, fake-GPU로 검증). 238 passed/1 skipped, opus holistic ready-to-ship. 다음: M2a Codex 묶음 리뷰)
+**최종 갱신**: 2026-05-22 (**M2a 구현 + Codex 리뷰 차단 1건 수정** — PDF 컨버터 + GPU 배관. Codex가 disconnect 시 GPU 세마포어 조기 해제 차단 발견 → done-callback 해제로 수정(`ca299ec`) + 결정적 disconnect 회귀 테스트. 240 passed/1 skipped. 다음: Codex round-2 확인)
 
 ---
 
@@ -79,8 +79,8 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M2a(PDF CPU + GPU 배관) 구현 완료 → Codex milestone 리뷰 대기**. M1b: 채택 완료(`v0.1.0-m1b`). M2a: 설계+계획+`pdf-pymupdf4llm` 컨버터 + `convert.py` GPU dispatch(`_run_conversion_stream` 추출 + `gpu_lock`+`queued`, fake-GPU 검증) + 등록 + PDF/손상/GPU-error SSE 테스트 + opus holistic(ready-to-ship, 세마포어 해제·disconnect 경로 실증). **다음: M2a Codex 묶음 리뷰**
-- **테스트**: **238 passed / 1 skipped** (`.venv/bin/pytest`; M2a +10). 린트 clean
+- **현재 phase**: **M2a 구현 + Codex 리뷰 차단 1건 수정 완료 → Codex round-2 확인 대기**. M1b: 채택(`v0.1.0-m1b`). M2a: `pdf-pymupdf4llm` 컨버터 + `convert.py` GPU dispatch + 등록 + 테스트. **Codex 리뷰**(`docs/reviews/2026-05-22-m2-pdf-codex.md`): 차단 1건(disconnect 시 GPU 세마포어가 in-flight executor task보다 먼저 해제 → VRAM 직렬화 깨짐) → **수정 `ca299ec`**: 세마포어를 task done-callback으로 해제(제너레이터 scope 아님). 결정적 raw-ASGI disconnect 회귀 테스트 추가(구버전에서 fail 확인). Codex 권고 #1(GPU cached-hit 테스트) 반영, #2는 disconnect 테스트의 "변환 중 lock held" assert로 충족, #3(position=1) no-op. **다음: 수정분 Codex round-2 송부**
+- **테스트**: **240 passed / 1 skipped** (`.venv/bin/pytest`; M2a +12). 린트 clean
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
 - **git**: master 브랜치, 태그 **`v0.0.1-m0`**, **`v0.1.0-m1b`**(@`f687dc4`). M2a 코드 `723d141`(deps)\~`6da0724`(GPU-error 테스트). 가장 최근 `6da0724`. (태그는 로컬만 — push 미실시)
 - **실행 방식**: Subagent-Driven Development (`superpowers:subagent-driven-development`). task별 fresh implementer subagent + spec-compliance 리뷰 → code-quality 리뷰, 전체 완료 후 opus 최종 holistic 리뷰
