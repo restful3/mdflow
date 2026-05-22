@@ -67,3 +67,36 @@ def test_convert_unknown_format_streams_error():
     assert events[-1][0] == "error"
     assert events[-1][1]["code"] == "FORMAT_DETECT_FAILED"
     assert events[-1][1]["retryable"] is False
+
+
+def test_convert_url_streams_fetch_progress_then_done(monkeypatch):
+    from mdflow.core.url_fetch import FetchResult
+
+    def fake_fetch(url, policy, *, transport=None):
+        return FetchResult(
+            data=b"hello from url",
+            source_url=url,
+            effective_url=url,
+            http_status=200,
+            content_type="text/plain",
+            content_length=14,
+            content_disposition=None,
+            filename_hint="page.txt",
+            fetched_at="2026-05-22T00:00:00Z",
+            redirect_count=0,
+        )
+
+    monkeypatch.setattr("mdflow.api.convert.fetch_url", fake_fetch)
+
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.post("/convert", json={"url": "https://example.com/page.txt"})
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    kinds = [e[0] for e in events]
+    assert "started" in kinds
+    assert kinds[-1] == "done"
+    assert any(k == "progress" and d.get("stage") == "fetch" for k, d in events)
+    done = dict(events)["done"]
+    assert done["markdown"] == "hello from url"
+    assert done["metadata"]["fetch"]["source_url"] == "https://example.com/page.txt"

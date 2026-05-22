@@ -12,16 +12,27 @@ import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import FastAPI, Request, UploadFile
+from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
+from starlette.datastructures import UploadFile
 
 from mdflow.core.errors import MdflowError
 from mdflow.core.events import Cached, Done, Error, Progress, Started
 from mdflow.core.service import ConvertRequest
+from mdflow.core.url_fetch import FetchResult, fetch_url
+
+_PCT_DONE = 100
 
 
 def _sse(event: str, payload: Any) -> str:
     return f"event: {event}\ndata: {payload.model_dump_json()}\n\n"
+
+
+def _done_event(result: Any, fetch_meta: dict[str, Any] | None) -> Done:
+    metadata = dict(result.metadata)
+    if fetch_meta is not None:
+        metadata = {**metadata, "fetch": fetch_meta, "input_kind": "url"}
+    return Done(markdown=result.markdown, metadata=metadata, assets=result.assets)
 
 
 async def _drain_until_done(q: asyncio.Queue, task: asyncio.Future) -> AsyncIterator[Progress]:
@@ -39,18 +50,65 @@ async def _drain_until_done(q: asyncio.Queue, task: asyncio.Future) -> AsyncIter
 
 def register_convert_route(app: FastAPI) -> None:
     @app.post("/convert")
-    async def convert(request: Request, file: UploadFile) -> StreamingResponse:
-        data = await file.read()
-        req = ConvertRequest(data=data, filename_hint=file.filename)
+    async def convert(request: Request) -> StreamingResponse:
+        content_type = request.headers.get("content-type", "")
         service = request.app.state.service
         pool = request.app.state.pool
+        url_policy = request.app.state.url_policy
         loop = asyncio.get_running_loop()
+
+        file_bytes: bytes | None = None
+        filename: str | None = None
+        url: str | None = None
+
+        if content_type.startswith("multipart/form-data"):
+            form = await request.form()
+            upload = form.get("file")
+            if isinstance(upload, UploadFile):
+                file_bytes = await upload.read()
+                filename = upload.filename
+        elif content_type.startswith("application/json"):
+            body = await request.json()
+            url = body.get("url")
 
         async def stream() -> AsyncIterator[str]:
             q: asyncio.Queue = asyncio.Queue()
 
             def on_progress(stage: str, pct: int) -> None:
                 loop.call_soon_threadsafe(q.put_nowait, Progress(stage=stage, pct=pct))
+
+            # Resolve input -> ConvertRequest (+ optional fetch metadata).
+            fetch_meta: dict[str, Any] | None = None
+            try:
+                if url is not None:
+                    fetched: FetchResult = await loop.run_in_executor(
+                        pool.cpu_executor, fetch_url, url, url_policy
+                    )
+                    req = ConvertRequest(
+                        data=fetched.data,
+                        filename_hint=fetched.filename_hint,
+                        content_type_hint=fetched.content_type,
+                    )
+                    fetch_meta = {
+                        "source_url": fetched.source_url,
+                        "effective_url": fetched.effective_url,
+                        "http_status": fetched.http_status,
+                        "content_type": fetched.content_type,
+                        "content_length": fetched.content_length,
+                        "content_disposition": fetched.content_disposition,
+                        "filename_hint": fetched.filename_hint,
+                        "fetched_at": fetched.fetched_at,
+                        "redirect_count": fetched.redirect_count,
+                        "fetch_warnings": fetched.fetch_warnings,
+                    }
+                    yield _sse("progress", Progress(stage="fetch", pct=_PCT_DONE, detail=url))
+                else:
+                    req = ConvertRequest(data=file_bytes, filename_hint=filename)
+            except MdflowError as e:
+                yield _sse(
+                    "error", Error(code=e.code.value, message=e.message, retryable=e.retryable)
+                )
+                return
 
             try:
                 lr = await loop.run_in_executor(pool.cpu_executor, service.lookup, req)
@@ -62,14 +120,7 @@ def register_convert_route(app: FastAPI) -> None:
 
             if lr.cached is not None:
                 yield _sse("cached", Cached(sha256=lr.sha, cached_at=lr.cached_at or ""))
-                yield _sse(
-                    "done",
-                    Done(
-                        markdown=lr.cached.markdown,
-                        metadata=lr.cached.metadata,
-                        assets=lr.cached.assets,
-                    ),
-                )
+                yield _sse("done", _done_event(lr.cached, fetch_meta))
                 return
 
             yield _sse(
@@ -90,13 +141,6 @@ def register_convert_route(app: FastAPI) -> None:
                     "error", Error(code=e.code.value, message=e.message, retryable=e.retryable)
                 )
                 return
-            yield _sse(
-                "done",
-                Done(
-                    markdown=resp.result.markdown,
-                    metadata=resp.result.metadata,
-                    assets=resp.result.assets,
-                ),
-            )
+            yield _sse("done", _done_event(resp.result, fetch_meta))
 
         return StreamingResponse(stream(), media_type="text/event-stream")
