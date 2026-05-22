@@ -28,9 +28,13 @@ class Runtime:
     cache: Cache
     service: ConversionService
     url_policy: UrlPolicy
+    # convert_file(path=...) reads the mdflow process filesystem. Safe for the
+    # stdio entrypoint (local client) but a server-local file-read surface on
+    # the HTTP mount, so create_app builds with allow_path=False.
+    allow_path: bool = True
 
 
-def build_mcp(settings: Settings | None = None) -> FastMCP:
+def build_mcp(settings: Settings | None = None, *, allow_path: bool = True) -> FastMCP:
     settings = settings or Settings()
     registry = build_registry(settings)
     cache = Cache(settings.cache_dir)
@@ -40,6 +44,7 @@ def build_mcp(settings: Settings | None = None) -> FastMCP:
         cache=cache,
         service=ConversionService(registry=registry, cache=cache),
         url_policy=url_policy_from_settings(settings),
+        allow_path=allow_path,
     )
     mcp: FastMCP = FastMCP("mdflow")
     register_tools(mcp, runtime)

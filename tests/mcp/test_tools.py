@@ -62,6 +62,25 @@ async def test_convert_file_too_large(monkeypatch):
             await client.call_tool("convert_file", {"filename": "a.txt", "content_base64": big})
 
 
+async def test_convert_file_path_disabled_when_not_allowed():
+    # The HTTP-mounted MCP builds with allow_path=False so an HTTP caller
+    # cannot read arbitrary server-local files via `path` (Codex M4 blocking).
+    async with Client(build_mcp(Settings(), allow_path=False)) as client:
+        with pytest.raises(ToolError):
+            await client.call_tool("convert_file", {"filename": "x.txt", "path": "/etc/hostname"})
+
+
+async def test_convert_url_ssrf_blocked_maps_to_toolerror(mcp):
+    # Real url_policy + fetch_url (no monkeypatch): a metadata IP is rejected
+    # by the SSRF check before any network call, surfacing as ToolError.
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError) as exc:
+            await client.call_tool(
+                "convert_url", {"url": "http://169.254.169.254/latest/meta-data/"}
+            )
+    assert "URL_BLOCKED" in str(exc.value)
+
+
 async def test_convert_file_conversion_error_maps_to_toolerror(mcp, monkeypatch):
     # Force the selected converter to raise a non-MdflowError; run_conversion
     # wraps it as CONVERSION_FAILED, which _run maps to ToolError("[CODE]..").

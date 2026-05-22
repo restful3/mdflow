@@ -26,7 +26,7 @@ PRD §7의 **MCP 표면**을 구현한다. 동일 `ConversionService`를 두 tra
   | `list_formats` | — | `[{ext, converter, requires_gpu}]` |
   | `get_cached` | `sha256: str` | `{markdown, metadata}` 또는 `None` |
 - **stdio entrypoint** `mdflow-mcp` (`[project.scripts]` → `mdflow.mcp.server:main`).
-- **Streamable HTTP 마운트**: `create_app()`가 `build_mcp().http_app(path="/mcp")`를 FastAPI에 마운트(lifespan 결합).
+- **Streamable HTTP 마운트**: `create_app()`가 `build_mcp(allow_path=False).http_app(path="/")`를 `app.mount("/mcp", ...)`로 마운트(lifespan 결합). HTTP transport는 `convert_file(path=)`를 비활성화(서버 로컬 파일 읽기 차단, Codex M4 차단 반영) — `content_base64`/`convert_url`만 노출.
 - **진행 알림**: 변환의 동기 progress 콜백을 `asyncio.run_coroutine_threadsafe(ctx.report_progress(...), loop)`로 이벤트 루프에 마샬링(SSE 핸들러의 `call_soon_threadsafe` 패턴과 동형).
 - **공유 composition**: 컨버터 등록을 `build_registry(settings)`로 추출해 HTTP lifespan(`api/app.py`)과 MCP가 **동일 레지스트리 구성**을 공유(드리프트 방지).
 - **신규 core 의존**: `fastmcp`.
@@ -223,9 +223,17 @@ def main() -> None:
 
 ### 6.2 Streamable HTTP (`/mcp`)
 
-`create_app()`이 `build_mcp().http_app(path="/mcp")`를 마운트. FastMCP http_app은 자체 lifespan을 가지므로 **FastAPI lifespan과 결합**해야 한다(FastMCP 권장 패턴: `app = FastAPI(lifespan=combined)` 또는 `app.mount` + `app.router.lifespan_context` 결합). 계획에서 정확한 결합 코드를 검증한다.
+**구현 확정**: `create_app()`이 `build_mcp(allow_path=False).http_app(path="/")`를 만들고 `app.mount("/mcp", mcp_app)`로 붙인다(→ `/mcp`, `/mcp/`가 MCP handler에 도달). FastMCP http_app은 자체 lifespan(세션 매니저)을 가지므로 FastAPI lifespan이 `_lifespan`과 `mcp_app.lifespan`을 **둘 다 진입**한다:
 
-- v1에서 HTTP `/mcp`는 in-memory 클라이언트 테스트로 커버되는 tool 로직 위의 **배선**이다. 마운트가 복잡하면 stdio + tool(in-memory) 우선, HTTP 마운트는 동일 milestone 내 후속 슬라이스로 분리 가능.
+```python
+@asynccontextmanager
+async def lifespan(app):
+    async with _lifespan(app), mcp_app.lifespan(app):
+        yield
+```
+
+- HTTP `/mcp`는 `allow_path=False`로 빌드되어 `convert_file(path=)` 서버 로컬 파일 읽기를 차단한다(Codex M4 차단).
+- in-memory 클라이언트 테스트가 tool 로직을 커버하고, 마운트 스모크(`tests/mcp/test_http_mount.py`)가 lifespan 결합 회귀를 잠근다.
 
 ---
 

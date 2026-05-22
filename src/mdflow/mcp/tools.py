@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -35,6 +36,17 @@ from mdflow.core.url_pipeline import convert_from_url
 if TYPE_CHECKING:
     from mdflow.mcp.server import Runtime
 
+logger = logging.getLogger(__name__)
+
+
+def _consume_progress_future(fut: asyncio.Future) -> None:
+    # Best-effort progress: swallow + debug-log a failed report_progress
+    # (e.g. session closed) so the Future's exception is observed and never
+    # surfaces as an unretrieved-exception warning. Never fails the conversion.
+    exc = fut.exception()
+    if exc is not None:
+        logger.debug("MCP report_progress failed: %r", exc)
+
 
 def register_tools(mcp: FastMCP, runtime: Runtime) -> None:
     async def _run(ctx: Context | None, call: Callable[[Callable[[str, int], None]], Any]) -> Any:
@@ -42,7 +54,8 @@ def register_tools(mcp: FastMCP, runtime: Runtime) -> None:
 
         def on_progress(stage: str, pct: int) -> None:
             if ctx is not None:
-                asyncio.run_coroutine_threadsafe(ctx.report_progress(pct, 100, stage), loop)
+                fut = asyncio.run_coroutine_threadsafe(ctx.report_progress(pct, 100, stage), loop)
+                fut.add_done_callback(_consume_progress_future)
 
         try:
             return await loop.run_in_executor(None, lambda: call(on_progress))
@@ -65,6 +78,10 @@ def register_tools(mcp: FastMCP, runtime: Runtime) -> None:
             except (ValueError, binascii.Error) as e:
                 raise ToolError(f"invalid base64 content: {e}") from e
         else:
+            if not runtime.allow_path:
+                raise ToolError(
+                    "path input is disabled on this transport; use content_base64 or convert_url"
+                )
             try:
                 data = Path(path).read_bytes()
             except OSError as e:

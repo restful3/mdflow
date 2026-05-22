@@ -62,7 +62,10 @@ def create_app() -> FastAPI:
     # app.state) and the MCP app's lifespan. The MCP server builds its own
     # runtime singletons but shares the disk cache_dir, so get_cached sees
     # entries written by /convert.
-    mcp_app = build_mcp().http_app(path="/")
+    # allow_path=False: the HTTP-mounted MCP must not expose convert_file(path=)
+    # arbitrary server-local file reads (Codex M4 blocking). stdio (mdflow-mcp)
+    # keeps path for local-client convenience.
+    mcp_app = build_mcp(allow_path=False).http_app(path="/")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
