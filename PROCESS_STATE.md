@@ -79,10 +79,10 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M1a (SSE 인프라) 구현 완료**. M1을 **M1a(SSE 인프라) → M1b(컨버터)**로 분해. M1a Task 0\~8 TDD + per-task 2단계 리뷰(spec→quality) + 전체 최종 리뷰 모두 통과. **다음: M1a Codex 묶음 리뷰 → M1b**
-- **테스트**: **186 passed / 1 skipped** (`.venv/bin/python -m pytest`; M1a로 +11)
-- **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체, 44 files)
-- **git**: master 브랜치, 태그 **`v0.0.1-m0`**, 트리 깨끗. M1a 10 commits (`b36836b`\~`17dd70e`). 가장 최근 `17dd70e test(m1): POST /convert progress-ordering through the event pump`
+- **현재 phase**: **M1a (SSE 인프라) 구현 완료 + Codex 묶음 리뷰 반영 완료**. M1a Task 0\~8 TDD + per-task 2단계 리뷰 + opus 최종 리뷰 + **Codex 리뷰 차단 2건/권고 1건/메모1 모두 반영**. **다음: M1b** (또는 선택적으로 Codex 변경분 재확인)
+- **테스트**: **191 passed / 1 skipped** (`.venv/bin/python -m pytest`; M1a로 +16; Codex 반영으로 +5)
+- **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
+- **git**: master 브랜치, 태그 **`v0.0.1-m0`**, 트리 깨끗. M1a 16 commits (`b36836b`\~`dd761c7`). 가장 최근 `dd761c7 docs/refactor(m1): document ProgressCallback sync invariant + close upload form`
 - **실행 방식**: Subagent-Driven Development (`superpowers:subagent-driven-development`). task별 fresh implementer subagent + spec-compliance 리뷰 → code-quality 리뷰, 전체 완료 후 opus 최종 holistic 리뷰
 - **M1a 문서**:
   - 설계: `docs/specs/2026-05-22-m1a-sse-infrastructure-design.md`
@@ -91,12 +91,18 @@
   - Task 0 `b36836b` python-multipart 의존성 / Task 1 `94ec1ca`+`c980ddf` `Cache.cached_at()` / Task 2 `5d1598e` service 분할(lookup/run_conversion/convert wrapper)
   - Task 3 `65eda1e` `/convert` SSE file 경로(started→progress→done) + 이벤트 펌프 / Task 4 `236cfdb` cache-hit(cached→done) / Task 5 `28cb161` error 경로 테스트
   - Task 6 `3487b8f` url 경로(fetch in executor → 공통 흐름, `_done_event`로 fetch metadata 합성) / Task 7 `5a3bbf8` 입력 검증(file/url 정확히 하나, 400) / Task 8 `17dd70e` 이벤트 펌프 순서 테스트
-- **M1a 최종 리뷰 (opus, 미커밋 산출물 — 다음 Codex 묶음에 포함)**: 판정 **"노트된 제약과 함께 ship 가능"**. 이벤트 펌프 race는 **safe-by-construction** 확정. 알려진 제약 3건은 §7 M1 이슈/노트에 기록
-- **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건**. 권고 #1(부분)·#2 적용 완료. #1(delete/purge OSError)·#4(shutdown in-flight) DEFER M1. **#3(pool↔service)는 M1a에서 해소** (`/convert`가 `pool.cpu_executor` 사용)
+- **M1a 최종 리뷰 (opus)**: 판정 **"노트된 제약과 함께 ship 가능"**. 이벤트 펌프 race는 **safe-by-construction** 확정
+- **M1a Codex 묶음 리뷰**: `docs/reviews/2026-05-22-m1a-sse-infrastructure-codex.md` — **차단 2건 + 권고 4건 + 메모 4건**. 메모 4건(펌프 race·UploadFile import·service split·URL metadata)은 모두 우리 판단에 동의. 반영 결과:
+  - **차단 1 (비-MdflowError 절단) — FIXED** `46ae469`+`dbc4269`. 설계 §6이 "예외 전체 → error event"를 요구 → 우리 초기 defer 분류가 틀렸음. run_conversion이 converter 예외를 `CONVERSION_FAILED`로 wrap + 라우트 3경계에 broad except → `INTERNAL` + logger.exception
+  - **차단 2 (file 크기 cap) — FIXED** `8bcebec`. `MDFLOW_MAX_INPUT_MB`를 file 경로에도 적용(bounded read + pre-stream 413). URL 경로는 기존 `UrlPolicy.max_bytes`로 이미 적용됨
+  - **권고 1 (JSON 입력 검증) — FIXED** `08feff0`. 비-object body/비-string url/invalid JSON → pre-stream 400 (raw 500 방지)
+  - **메모 1 + 권고 3 — APPLIED** `dd761c7`. ProgressCallback "synchronous, in-call only" invariant 문서화 + `async with request.form()`로 업로드 리소스 close
+  - **권고 2 (client disconnect 시 task 미취소) — DEFER** (Codex도 동의). §7 M1a 알려진 제약 #2 유지. M1b/M2 긴 변환 붙을 때 처리
+- **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건**. #1(delete/purge OSError)·#4(shutdown in-flight) DEFER M1. **#3(pool↔service)는 M1a에서 해소**
 - **다음 액션 (다음 1\~3)**:
-  1. **M1a Codex 묶음 리뷰** (Task 9 Step 3) — 번들: `convert.py`, `service.py`(split), `cache.py`(cached_at), 테스트 deltas. opus 최종 리뷰가 식별한 알려진 제약 3건(§7) 포함해 송부. 케이던스: milestone 완료 직전 묶음 리뷰 ([[feedback-codex-review-cadence]])
-  2. Codex 리뷰 반영 후 **M1b** (docx/pptx/xlsx/html 컨버터 + 골든 출력) brainstorming → plan
-  3. M1 잔여 DEFER 항목(§7) 중 M1b와 묶을 것 선별 (cache delete/purge OSError 정규화, shutdown 정책 등)
+  1. (선택) Codex에 변경분 재확인 송부 — 차단 2건이 fix됐으므로 한 라운드 재리뷰로 루프 종료 가능. 사용자 미지시 시 생략 가능
+  2. **M1b** (docx/pptx/xlsx/html 컨버터 + 골든 출력) brainstorming → plan
+  3. M1 잔여 DEFER 항목(§7) 중 M1b와 묶을 것 선별 (cache delete/purge OSError 정규화, shutdown/disconnect 정책 등)
 
 - **M1a 핵심 설계 결정** (계획/스펙에 상세, 구현으로 확정됨):
   - async 핸들러 orchestrate, `ConversionService`는 sync 유지. asyncio.Queue + `call_soon_threadsafe`로 스레드풀 progress 펌프 (Task 8 순서 테스트로 검증)
@@ -396,7 +402,7 @@ PRD 14섹션 구성:
 
 opus holistic 최종 리뷰(`git diff v0.0.1-m0..HEAD`)가 식별. 모두 M1a 범위에서는 무해(TextConverter 한정)하나 다음 단계에서 판단 필요:
 
-1. **비-MdflowError 미포착 → 스트림 절단** (`convert.py` `task.result()` / fetch / lookup 주변). `task.result()`는 `MdflowError`만 catch. 컨버터가 `ValueError` 등 비-MdflowError를 raise하면 `started`(+`progress`) 송신 후 async generator 밖으로 전파 → 클라이언트는 **terminal `done`/`error` 없는 절단 스트림**(HTTP 200)을 받아 네트워크 끊김과 구분 불가. **미문서화** (스펙 §6/§8에 비-MdflowError 케이스 없음). M1a에선 TextConverter가 트리거 불가라 무해. **컨버터 추가(M1b) 전에 처리 정책 결정 필요** — catch-all → error 이벤트 합성 vs 명시적 비범위. 계획 범위 밖이라 M1a에서 코드 추가 안 함 (Codex 판단 위임)
+1. **비-MdflowError 미포착 → 스트림 절단 — RESOLVED** (`46ae469`+`dbc4269`). Codex 차단 1로 재분류: 설계 §6(line 96 "변환/fetch 중 MdflowError/예외 → error", line 111 "스트림 시작 후 모든 실패 → HTTP 200 + 스트림 내 error")이 **예외 전체** 처리를 요구하므로 defer가 아니라 미구현 버그였음. 수정: `run_conversion`이 converter raw 예외를 `MdflowError(CONVERSION_FAILED)`로 wrap + 라우트 3경계(fetch/lookup/task.result)에 broad `except Exception` → `Error(INTERNAL)` + `logger.exception`(traceback은 서버 로그만, 클라엔 generic 메시지). 회귀: fake converter `ValueError` → 마지막 이벤트 `error`/`CONVERSION_FAILED`
 2. **클라이언트 중단 시 in-flight executor task 미취소** — 스트림 도중 클라이언트 disconnect해도 `cpu_executor` future는 끝까지 실행되고 cache write까지 수행 (orphan compute + thread 낭비). `request.is_disconnected()` 체크/`finally` 없음. 스펙 §8 shutdown drain DEFER와 일관. 후속 처리
 3. **이벤트 펌프 race — 분석 완료, safe-by-construction** (코드 변경 불필요). progress 콜백은 worker 함수 **반환 전** 동기 실행되어 `call_soon_threadsafe(put_nowait)`가 future-완료 콜백(`task.done()` flip)보다 FIFO상 먼저 enqueue됨 → `task.done() and q.empty()` 가드는 race에서 이길 수 없음. 0.05s 폴링은 belt-and-suspenders(보조적). Task 8 순서 테스트로 실증. **버그 아님 — "분석됨, 안전"으로 기록**
 4. **마이너 (Codex 참고)**: `_done_event(result, ...)`의 `result`가 `Any` 타입힌트(실제 `ConversionResult`); `q`/`task`가 파라미터 없는 `asyncio.Queue`/`asyncio.Future`. 둘 다 계획 명세대로이며 타입 강화는 선택
