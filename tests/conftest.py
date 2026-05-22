@@ -103,3 +103,30 @@ def sample_html() -> str:
         "<footer>Copyright 2026</footer>\n"
         "</body></html>"
     )
+
+
+@pytest.fixture
+def sample_pdf_bytes() -> bytes:
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()
+    # Larger font sizes let pymupdf4llm's heuristics treat lines as headings.
+    page.insert_text((72, 72), "Document Title", fontsize=24)
+    page.insert_text((72, 120), "Section One", fontsize=18)
+    page.insert_text((72, 150), "First paragraph of body text for the PDF.", fontsize=11)
+    page.insert_text((72, 175), "Second paragraph with a bit more content.", fontsize=11)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+@pytest.fixture
+def empty_pdf_bytes() -> bytes:
+    import fitz
+
+    doc = fitz.open()
+    doc.new_page()  # one blank page, no text
+    data = doc.tobytes()
+    doc.close()
+    return data
