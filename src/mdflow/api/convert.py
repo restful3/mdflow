@@ -12,7 +12,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from starlette.datastructures import UploadFile
 
@@ -70,6 +70,14 @@ def register_convert_route(app: FastAPI) -> None:
         elif content_type.startswith("application/json"):
             body = await request.json()
             url = body.get("url")
+
+        has_file = file_bytes is not None
+        has_url = bool(url)
+        if has_file == has_url:  # neither, or both
+            raise HTTPException(
+                status_code=400,
+                detail="provide exactly one of: multipart 'file' or JSON 'url'",
+            )
 
         async def stream() -> AsyncIterator[str]:
             q: asyncio.Queue = asyncio.Queue()

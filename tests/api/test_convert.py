@@ -100,3 +100,17 @@ def test_convert_url_streams_fetch_progress_then_done(monkeypatch):
     done = dict(events)["done"]
     assert done["markdown"] == "hello from url"
     assert done["metadata"]["fetch"]["source_url"] == "https://example.com/page.txt"
+
+
+def test_convert_no_input_returns_400():
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.post("/convert", json={})
+    assert r.status_code == 400
+
+
+def test_convert_empty_multipart_returns_400():
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.post("/convert", data={"notfile": "x"})
+    assert r.status_code == 400
