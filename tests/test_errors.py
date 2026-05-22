@@ -12,6 +12,7 @@ def test_error_code_members_exist():
         "INPUT_TOO_LARGE",
         "CONVERSION_FAILED",
         "LIBREOFFICE_UNAVAILABLE",
+        "HWP_UNAVAILABLE",
         "TIMEOUT",
         "CACHE_IO_ERROR",
         "INTERNAL",
@@ -34,6 +35,8 @@ def test_error_code_retryable_mapping():
     assert ErrorCode.URL_FETCH_FAILED.retryable is True
     assert ErrorCode.URL_TIMEOUT.retryable is True
     assert ErrorCode.UNSUPPORTED_FORMAT.retryable is False
+    assert ErrorCode.LIBREOFFICE_UNAVAILABLE.retryable is False
+    assert ErrorCode.HWP_UNAVAILABLE.retryable is False
     assert ErrorCode.URL_INVALID.retryable is False
     assert ErrorCode.URL_BLOCKED.retryable is False
     assert ErrorCode.URL_TOO_LARGE.retryable is False
