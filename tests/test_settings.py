@@ -14,6 +14,7 @@ _ENV_VARS = [
     "MDFLOW_URL_CONNECT_TIMEOUT_S",
     "MDFLOW_URL_READ_TIMEOUT_S",
     "MDFLOW_URL_USER_AGENT",
+    "MDFLOW_SOFFICE_TIMEOUT_S",
 ]
 
 
@@ -33,6 +34,7 @@ def test_settings_defaults(monkeypatch):
     assert s.url_connect_timeout_s == 10.0
     assert s.url_read_timeout_s == 30.0
     assert s.url_user_agent.startswith("mdflow/")
+    assert s.soffice_timeout_s == 120.0
 
 
 def test_settings_env_override(monkeypatch):
@@ -59,5 +61,19 @@ def test_max_url_input_must_not_exceed_max_input(monkeypatch):
 def test_zero_or_negative_size_rejected(monkeypatch):
     _clean_env(monkeypatch)
     monkeypatch.setenv("MDFLOW_MAX_INPUT_MB", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_soffice_timeout_env_override(monkeypatch):
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("MDFLOW_SOFFICE_TIMEOUT_S", "45")
+    s = Settings()
+    assert s.soffice_timeout_s == 45.0
+
+
+def test_soffice_timeout_must_be_positive(monkeypatch):
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("MDFLOW_SOFFICE_TIMEOUT_S", "0")
     with pytest.raises(ValueError):
         Settings()

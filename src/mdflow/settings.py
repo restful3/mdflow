@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     url_connect_timeout_s: float = Field(default=10.0, gt=0)
     url_read_timeout_s: float = Field(default=30.0, gt=0)
     url_user_agent: str = Field(default="mdflow/0.0.1 (+https://github.com/restful3/mdflow)")
+    soffice_timeout_s: float = Field(default=120.0, gt=0)
 
     @model_validator(mode="after")
     def _check_url_input_cap(self) -> Settings:
