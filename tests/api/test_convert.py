@@ -1,7 +1,9 @@
 """POST /convert SSE streaming."""
 
+import asyncio
 import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -285,3 +287,67 @@ def test_convert_corrupted_ooxml_streams_conversion_failed(filename, mime):
     by_event, kinds = _run_convert(filename, b"this is not a real office document", mime)
     assert kinds[-1] == "error"
     assert by_event["error"]["code"] == "CONVERSION_FAILED"
+
+
+class _FakeGpuConverter:
+    name = "fake-gpu"
+    formats = ("txt",)
+    requires_gpu = True
+
+    def can_handle(self, ctx):
+        return ctx.format in self.formats
+
+    def convert(self, ctx, progress):
+        from mdflow.converters.base import ConversionResult
+
+        progress("infer", 50)
+        return ConversionResult(markdown="gpu-output", metadata={})
+
+
+def _swap_registry(app, converter):
+    from mdflow.core.registry import Registry
+
+    reg = Registry()
+    reg.register(converter)
+    app.state.registry = reg
+    app.state.service.registry = reg
+
+
+def test_gpu_converter_runs_under_gpu_lock_and_reports_gpu_true():
+    app = create_app()
+    with TestClient(app) as client:
+        _swap_registry(app, _FakeGpuConverter())
+        r = client.post("/convert", files={"file": ("a.txt", b"hi", "text/plain")})
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    by_event = dict(events)
+    kinds = [e[0] for e in events]
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["gpu"] is True
+    assert by_event["done"]["markdown"] == "gpu-output"
+    assert "queued" not in kinds
+
+
+async def test_gpu_converter_emits_queued_when_semaphore_busy():
+    app = create_app()
+    async with app.router.lifespan_context(app):
+        _swap_registry(app, _FakeGpuConverter())
+        sem = app.state.pool.gpu_semaphore
+        await sem.acquire()  # hold the GPU -> next request must queue
+
+        async def _release_soon():
+            await asyncio.sleep(0.2)
+            sem.release()
+
+        releaser = asyncio.create_task(_release_soon())
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+            r = await client.post("/convert", files={"file": ("a.txt", b"hi", "text/plain")})
+        await releaser
+
+    events = _parse_sse(r.text)
+    kinds = [e[0] for e in events]
+    assert "queued" in kinds
+    assert kinds.index("queued") < kinds.index("started")
+    assert kinds[-1] == "done"
+    assert dict(events)["queued"]["reason"] == "gpu_busy"

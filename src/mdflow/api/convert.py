@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from starlette.datastructures import UploadFile
 
 from mdflow.core.errors import ErrorCode, MdflowError
-from mdflow.core.events import Cached, Done, Error, Progress, Started
+from mdflow.core.events import Cached, Done, Error, Progress, Queued, Started
 from mdflow.core.service import ConvertRequest
 from mdflow.core.url_fetch import FetchResult, fetch_url
 
@@ -50,6 +50,47 @@ async def _drain_until_done(q: asyncio.Queue, task: asyncio.Future) -> AsyncIter
         except TimeoutError:
             continue
         yield ev
+
+
+async def _run_conversion_stream(
+    loop: Any,
+    pool: Any,
+    service: Any,
+    req: Any,
+    lr: Any,
+    on_progress: Any,
+    q: asyncio.Queue,
+    fetch_meta: dict[str, Any] | None,
+) -> AsyncIterator[str]:
+    """Emit started -> progress* -> done|error for a cache miss. The GPU
+    branch in stream() wraps this in pool.gpu_lock(); CPU converters call
+    it directly."""
+    yield _sse(
+        "started",
+        Started(converter=lr.converter.name, gpu=lr.converter.requires_gpu, sha256=lr.sha),
+    )
+    task = asyncio.ensure_future(
+        loop.run_in_executor(pool.cpu_executor, service.run_conversion, req, lr, on_progress)
+    )
+    async for ev in _drain_until_done(q, task):
+        yield _sse("progress", ev)
+    try:
+        resp = task.result()
+    except MdflowError as e:
+        yield _sse("error", Error(code=e.code.value, message=e.message, retryable=e.retryable))
+        return
+    except Exception:
+        logger.exception("unexpected error in /convert stream (run_conversion)")
+        yield _sse(
+            "error",
+            Error(
+                code=ErrorCode.INTERNAL.value,
+                message="internal error",
+                retryable=ErrorCode.INTERNAL.retryable,
+            ),
+        )
+        return
+    yield _sse("done", _done_event(resp.result, fetch_meta))
 
 
 def register_convert_route(app: FastAPI) -> None:
@@ -172,35 +213,18 @@ def register_convert_route(app: FastAPI) -> None:
                 yield _sse("done", _done_event(lr.cached, fetch_meta))
                 return
 
-            yield _sse(
-                "started",
-                Started(converter=lr.converter.name, gpu=lr.converter.requires_gpu, sha256=lr.sha),
-            )
-            task = asyncio.ensure_future(
-                loop.run_in_executor(
-                    pool.cpu_executor, service.run_conversion, req, lr, on_progress
-                )
-            )
-            async for ev in _drain_until_done(q, task):
-                yield _sse("progress", ev)
-            try:
-                resp = task.result()
-            except MdflowError as e:
-                yield _sse(
-                    "error", Error(code=e.code.value, message=e.message, retryable=e.retryable)
-                )
-                return
-            except Exception:
-                logger.exception("unexpected error in /convert stream (run_conversion)")
-                yield _sse(
-                    "error",
-                    Error(
-                        code=ErrorCode.INTERNAL.value,
-                        message="internal error",
-                        retryable=ErrorCode.INTERNAL.retryable,
-                    ),
-                )
-                return
-            yield _sse("done", _done_event(resp.result, fetch_meta))
+            if lr.converter.requires_gpu:
+                if pool.gpu_semaphore.locked():
+                    yield _sse("queued", Queued(reason="gpu_busy", position=1))
+                async with pool.gpu_lock():
+                    async for chunk in _run_conversion_stream(
+                        loop, pool, service, req, lr, on_progress, q, fetch_meta
+                    ):
+                        yield chunk
+            else:
+                async for chunk in _run_conversion_stream(
+                    loop, pool, service, req, lr, on_progress, q, fetch_meta
+                ):
+                    yield chunk
 
         return StreamingResponse(stream(), media_type="text/event-stream")
