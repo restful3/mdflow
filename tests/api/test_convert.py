@@ -117,8 +117,6 @@ def test_convert_empty_multipart_returns_400():
 
 
 def test_convert_converter_exception_streams_conversion_failed():
-    from mdflow.converters.base import ConversionResult  # noqa: F401
-
     class BoomConverter:
         name = "boom"
         formats = ("txt",)
