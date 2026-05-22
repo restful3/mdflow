@@ -53,3 +53,17 @@ def test_convert_file_hit_streams_cached_then_done():
     cached = dict(events)["cached"]
     assert "cached_at" in cached
     assert dict(events)["done"]["markdown"] == "hello mdflow"
+
+
+def test_convert_unknown_format_streams_error():
+    app = create_app()
+    with TestClient(app) as client:
+        # No extension, binary bytes with no magic match -> FORMAT_DETECT_FAILED
+        r = client.post(
+            "/convert", files={"file": ("blob", b"\x00\x01\x02\x03", "application/octet-stream")}
+        )
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    assert events[-1][0] == "error"
+    assert events[-1][1]["code"] == "FORMAT_DETECT_FAILED"
+    assert events[-1][1]["retryable"] is False
