@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (**M1b 구현 계획 작성 완료** — `docs/superpowers/plans/2026-05-22-m1b-office-converters.md` (Task 0\~7). 다음: 실행 방식 선택 후 subagent-driven 구현)
+**최종 갱신**: 2026-05-22 (**M1b 컨버터 4종 구현 완료** — subagent-driven, 217 passed/1 skipped, opus holistic 리뷰 ready-to-ship. 다음: Codex milestone 묶음 리뷰)
 
 ---
 
@@ -79,10 +79,10 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M1a 완료(Codex 최종 승인) → M1b 설계 + 구현 계획 작성 완료, 구현 대기**. M1a: Task 0\~8 TDD + per-task 2단계 리뷰 + opus 최종 리뷰 + Codex 1·2차 리뷰 최종 승인. M1b: 브레인스토밍·설계(`docs/specs/2026-05-22-m1b-office-converters-design.md`)·구현 계획(`docs/superpowers/plans/2026-05-22-m1b-office-converters.md`, Task 0\~7) 완료. **다음: 실행 방식 선택 → subagent-driven 구현**
-- **테스트**: **191 passed / 1 skipped** (`.venv/bin/python -m pytest`; M1a로 +16; Codex 반영으로 +5)
+- **현재 phase**: **M1b 컨버터 구현 완료(subagent-driven, opus holistic 리뷰 ready-to-ship) → Codex 묶음 리뷰 대기**. M1a: Codex 1·2차 최종 승인. M1b: 설계 + 구현 계획 + 컨버터 4종(docx/pptx/xlsx/html) + 골든 하니스 + lifespan 등록 + 포맷별 SSE 통합 테스트 전부 구현·task별 2단계 리뷰 통과. **다음: Codex milestone 묶음 리뷰**
+- **테스트**: **217 passed / 1 skipped** (`.venv/bin/pytest`; M1b로 +26). 린트 clean
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
-- **git**: master 브랜치, 태그 **`v0.0.1-m0`**. 가장 최근 `02efad1 docs: session handoff for M1b writing-plans`. 미커밋: `docs/superpowers/plans/2026-05-22-m1b-office-converters.md`(신규, untracked)
+- **git**: master 브랜치, 태그 **`v0.0.1-m0`**. M1b 코드 커밋 `298975a`(deps)\~`c72dd4b`(등록+통합). 가장 최근 `c72dd4b feat(m1b): register office converters + per-format SSE integration tests`. 트리 깨끗(state 갱신 제외)
 - **실행 방식**: Subagent-Driven Development (`superpowers:subagent-driven-development`). task별 fresh implementer subagent + spec-compliance 리뷰 → code-quality 리뷰, 전체 완료 후 opus 최종 holistic 리뷰
 - **M1a 문서**:
   - 설계: `docs/specs/2026-05-22-m1a-sse-infrastructure-design.md`
@@ -101,9 +101,9 @@
   - **2차 재리뷰 (round-2)**: 위 반영분(`git diff 96ceffd..HEAD`)을 Codex에 재송부 → 첫 줄 정확히 `===CODEX_FINAL_APPROVAL===` 출력. 추가 수정 파일 없음 = **잔존 이견 0건, M1a 최종 확정**. (Codex가 화면 토큰만 출력하고 별도 round-2 파일은 미생성 — 승인이므로 정상)
 - **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건**. #1(delete/purge OSError)·#4(shutdown in-flight) DEFER M1. **#3(pool↔service)는 M1a에서 해소**
 - **다음 액션 (다음 1\~3)**:
-  1. **M1b 구현 계획 작성 완료** (`docs/superpowers/plans/2026-05-22-m1b-office-converters.md`, Task 0\~7) — 사용자가 실행 방식(subagent-driven 권장 / inline) 선택 후 구현 착수
+  1. **M1b Codex milestone 묶음 리뷰** (`git diff eeb5d88 c72dd4b`) — 송부 후 `docs/reviews/2026-05-22-m1b-office-converters-codex.md`에 결과 기록. ⚠️ tmux `md:codex` 윈도우를 stale supervisor 루프가 점유 중이라 그 프로세스 정리/재지정 필요
   2. M1 잔여 DEFER 항목은 별도 "M1 hardening" 슬라이스로 분리 (cache delete/purge OSError 정규화, shutdown/disconnect 정책, URL temp streaming, language_hint) — M1b 범위에서 제외 확정
-  3. M1b 구현 후 Codex 묶음 리뷰(milestone 케이던스)
+  3. **M1b 후속(non-blocking, opus holistic 리뷰 도출)**: (a) docx 표 헤더가 본문 행으로 강등됨 — python-docx/mammoth가 `<th>` 없이 `<td>`만 내보내 markdownify가 빈 헤더 합성. 골든에 충실히 캡처됨. 헤더 행이 있는 실제 docx에선 의미상 부정확 → `_html_to_md` docx 경로에서 첫 `<tr>`을 헤더 승격하거나 한계 문서화. (b) `html.py`가 `text._decode`(사설) 교차 import — 세 번째 소비자 생기면 `converters/_decode.py`로 승격
 
 - **M1a 핵심 설계 결정** (계획/스펙에 상세, 구현으로 확정됨):
   - async 핸들러 orchestrate, `ConversionService`는 sync 유지. asyncio.Queue + `call_soon_threadsafe`로 스레드풀 progress 펌프 (Task 8 순서 테스트로 검증)
