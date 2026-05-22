@@ -27,9 +27,11 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "pymupdf4llm>=0.0.17",
     "fastmcp>=3.0",
+    "typer>=0.12",
 ]
 
 [project.scripts]
+mdflow = "mdflow.cli:app"
 mdflow-mcp = "mdflow.mcp.server:main"
 
 [project.optional-dependencies]
