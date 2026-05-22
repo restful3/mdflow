@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from mdflow.api.app import create_app
@@ -263,3 +264,24 @@ def test_convert_html_streams_started_done(sample_html):
     assert kinds[0] == "started" and kinds[-1] == "done"
     assert by_event["started"]["converter"] == "html-trafilatura"
     assert_golden(by_event["done"]["markdown"], "html/sample.md")
+
+
+@pytest.mark.parametrize(
+    ("filename", "mime"),
+    [
+        ("broken.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        (
+            "broken.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ),
+        ("broken.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ],
+)
+def test_convert_corrupted_ooxml_streams_conversion_failed(filename, mime):
+    # Garbage bytes detected (by extension) as an OOXML format must reach
+    # the converter, raise inside the library, and surface as a terminal
+    # CONVERSION_FAILED error event — proving the converter does not swallow
+    # the library exception (design §6).
+    by_event, kinds = _run_convert(filename, b"this is not a real office document", mime)
+    assert kinds[-1] == "error"
+    assert by_event["error"]["code"] == "CONVERSION_FAILED"
