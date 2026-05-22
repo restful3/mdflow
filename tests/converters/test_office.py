@@ -103,3 +103,47 @@ def test_soffice_missing_output_raises_conversion_failed(monkeypatch):
     with pytest.raises(MdflowError) as exc:
         conv.convert(_ctx(b"anything", "doc"), lambda s, p: None)
     assert exc.value.code is ErrorCode.CONVERSION_FAILED
+
+
+def test_soffice_failure_message_includes_stdout_when_stderr_empty(monkeypatch):
+    conv = LibreOfficeConverter(timeout_s=120.0)
+    conv._soffice = "/usr/bin/soffice"
+
+    def fake_run(args, **kwargs):
+        return subprocess.CompletedProcess(
+            args=args, returncode=1, stdout=b"stdout detail here", stderr=b""
+        )
+
+    monkeypatch.setattr("mdflow.converters.office.subprocess.run", fake_run)
+    with pytest.raises(MdflowError) as exc:
+        conv.convert(_ctx(b"x", "doc"), lambda s, p: None)
+    assert exc.value.code is ErrorCode.CONVERSION_FAILED
+    assert "stdout detail here" in exc.value.message
+
+
+def test_soffice_invoked_with_safe_argv(monkeypatch):
+    conv = LibreOfficeConverter(timeout_s=77.0)
+    conv._soffice = "/usr/bin/soffice"
+    captured: dict = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        # returncode 0 but no PDF written -> raises CONVERSION_FAILED; we assert before that matters
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("mdflow.converters.office.subprocess.run", fake_run)
+    with pytest.raises(MdflowError):
+        conv.convert(_ctx(b"x", "doc"), lambda s, p: None)
+
+    args = captured["args"]
+    assert isinstance(args, list)  # argv list, never a shell string
+    assert args[0] == "/usr/bin/soffice"
+    assert "--headless" in args
+    assert args[args.index("--convert-to") + 1] == "pdf"
+    assert "--outdir" in args
+    assert any(
+        a.startswith("-env:UserInstallation=file://") and a.endswith("lo_profile") for a in args
+    )
+    assert captured["kwargs"].get("timeout") == 77.0
+    assert "shell" not in captured["kwargs"]  # never shell=True

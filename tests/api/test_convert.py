@@ -515,6 +515,16 @@ async def test_gpu_cached_hit_skips_gpu_branch_even_when_semaphore_busy():
     assert kinds == ["cached", "done"]
 
 
+def test_convert_doc_libreoffice_unavailable_streams_error(monkeypatch):
+    # Force soffice-absent at converter construction so the office path
+    # raises LIBREOFFICE_UNAVAILABLE, and assert it surfaces as an SSE error.
+    monkeypatch.setattr("mdflow.converters.office.shutil.which", lambda _name: None)
+    by_event, kinds = _run_convert("sample.doc", b"placeholder doc bytes", "application/msword")
+    assert kinds[-1] == "error"
+    assert by_event["error"]["code"] == "LIBREOFFICE_UNAVAILABLE"
+    assert by_event["error"]["retryable"] is False
+
+
 @requires_soffice
 def test_convert_doc_streams_started_done(sample_doc_bytes):
     by_event, kinds = _run_convert("sample.doc", sample_doc_bytes, "application/msword")

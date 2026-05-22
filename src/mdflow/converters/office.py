@@ -75,9 +75,11 @@ class LibreOfficeConverter:
             pdf_path = tmp_path / "input.pdf"
             if proc.returncode != 0 or not pdf_path.exists():
                 stderr = proc.stderr.decode("utf-8", "replace").strip()
+                stdout = proc.stdout.decode("utf-8", "replace").strip()
+                detail = (stderr or stdout)[:500]
                 raise MdflowError(
                     ErrorCode.CONVERSION_FAILED,
-                    f"soffice failed (rc={proc.returncode}): {stderr[:500]}",
+                    f"soffice failed (rc={proc.returncode}): {detail}",
                 )
             pdf_bytes = pdf_path.read_bytes()
         progress("convert", 50)
