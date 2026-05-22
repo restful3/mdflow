@@ -1,6 +1,9 @@
 """Shared pytest fixtures for mdflow tests."""
 
 import io
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -130,3 +133,66 @@ def empty_pdf_bytes() -> bytes:
     data = doc.tobytes()
     doc.close()
     return data
+
+
+requires_soffice = pytest.mark.skipif(
+    shutil.which("soffice") is None,
+    reason="LibreOffice (soffice) not installed",
+)
+
+
+def _soffice_to(src_bytes: bytes, src_ext: str, dst_ext: str) -> bytes:
+    """Convert src_bytes (a src_ext document) to dst_ext via soffice headless.
+
+    Used to build legacy binary doc/ppt fixtures from code-generated
+    docx/pptx, since there is no pure-Python writer for the legacy
+    formats. Caller must be guarded by @requires_soffice.
+    """
+    soffice = shutil.which("soffice")
+    assert soffice is not None, "guarded by @requires_soffice"
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"in.{src_ext}"
+        src.write_bytes(src_bytes)
+        subprocess.run(
+            [
+                soffice,
+                "--headless",
+                "--convert-to",
+                dst_ext,
+                "--outdir",
+                tmp,
+                f"-env:UserInstallation=file://{Path(tmp) / 'profile'}",
+                str(src),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+        return (Path(tmp) / f"in.{dst_ext}").read_bytes()
+
+
+@pytest.fixture(scope="session")
+def sample_doc_bytes() -> bytes:
+    from docx import Document
+
+    d = Document()
+    d.add_heading("Document Title", level=1)
+    d.add_heading("Section One", level=2)
+    d.add_paragraph("First paragraph of body text for the doc.")
+    buf = io.BytesIO()
+    d.save(buf)
+    return _soffice_to(buf.getvalue(), "docx", "doc")
+
+
+@pytest.fixture(scope="session")
+def sample_ppt_bytes() -> bytes:
+    from pptx import Presentation
+
+    prs = Presentation()
+    layout = prs.slide_layouts[1]  # Title and Content
+    s = prs.slides.add_slide(layout)
+    s.shapes.title.text = "First Slide"
+    s.placeholders[1].text_frame.text = "Bullet one"
+    buf = io.BytesIO()
+    prs.save(buf)
+    return _soffice_to(buf.getvalue(), "pptx", "ppt")
