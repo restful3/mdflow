@@ -82,7 +82,7 @@
 - **현재 phase**: **M1b 컨버터 구현 + Codex milestone 리뷰 완료 (차단 0건) → M1b 사실상 채택**. M1a: Codex 1·2차 최종 승인. M1b: 설계 + 구현 계획 + 컨버터 4종(docx/pptx/xlsx/html) + 골든 하니스 + lifespan 등록 + 포맷별 SSE 통합 테스트 + opus holistic(ready-to-ship) + Codex 묶음 리뷰(차단 0). **다음: M1b 권고 3건을 M1 hardening으로 분리 / (선택) 태그**
 - **테스트**: **228 passed / 1 skipped** (`.venv/bin/pytest`; M1b +26, M1b-harden +11). 린트 clean
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
-- **git**: master 브랜치, 태그 **`v0.0.1-m0`**. M1b 코드 커밋 `298975a`(deps)\~`c72dd4b`(등록+통합). 가장 최근 `c72dd4b feat(m1b): register office converters + per-format SSE integration tests`. 트리 깨끗(state 갱신 제외)
+- **git**: master 브랜치, 태그 **`v0.0.1-m0`**, **`v0.1.0-m1b`**(@`f687dc4`, M1b+harden 완료점). M1b 코드 `298975a`\~`ab6f92a`(harden 포함). 트리 깨끗. (태그는 로컬만 — push 미실시)
 - **실행 방식**: Subagent-Driven Development (`superpowers:subagent-driven-development`). task별 fresh implementer subagent + spec-compliance 리뷰 → code-quality 리뷰, 전체 완료 후 opus 최종 holistic 리뷰
 - **M1a 문서**:
   - 설계: `docs/specs/2026-05-22-m1a-sse-infrastructure-design.md`
