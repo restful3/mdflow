@@ -68,3 +68,5 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B011"]
+# Typer's idiom puts typer.Option/Argument in defaults (B008 false positive).
+"src/mdflow/cli.py" = ["B008"]
