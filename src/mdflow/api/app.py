@@ -19,39 +19,14 @@ from fastapi import FastAPI
 
 from mdflow.api.admin import register_admin_routes
 from mdflow.api.convert import register_convert_route
-from mdflow.converters.docx import DocxConverter
-from mdflow.converters.html import HtmlConverter
-from mdflow.converters.hwp import HwpConverter
-from mdflow.converters.office import LibreOfficeConverter
-from mdflow.converters.pdf import PdfConverter
-from mdflow.converters.pptx import PptxConverter
-from mdflow.converters.spreadsheet import XlsxConverter
-from mdflow.converters.text import TextConverter
 from mdflow.core.cache import Cache
-from mdflow.core.registry import Registry
 from mdflow.core.service import ConversionService
-from mdflow.core.url_fetch import UrlPolicy
 from mdflow.runtime.capabilities import Capabilities, detect
+from mdflow.runtime.composition import build_registry, url_policy_from_settings
 from mdflow.runtime.concurrency import ConcurrencyPool
 from mdflow.settings import Settings
 
 logger = logging.getLogger(__name__)
-
-
-def url_policy_from_settings(settings: Settings) -> UrlPolicy:
-    """Map the 6 URL-related MDFLOW_* settings onto a UrlPolicy.
-
-    Codex memo #10. max_url_input_mb is megabytes; UrlPolicy.max_bytes
-    is bytes.
-    """
-    return UrlPolicy(
-        allow_private_urls=settings.allow_private_urls,
-        max_redirects=settings.url_max_redirects,
-        max_bytes=settings.max_url_input_mb * 1024 * 1024,
-        connect_timeout_s=settings.url_connect_timeout_s,
-        read_timeout_s=settings.url_read_timeout_s,
-        user_agent=settings.url_user_agent,
-    )
 
 
 @asynccontextmanager
@@ -60,15 +35,7 @@ async def _lifespan(app: FastAPI):
     capabilities = detect()
     Capabilities.log_boot(capabilities)
 
-    registry = Registry()
-    registry.register(TextConverter())
-    registry.register(DocxConverter())
-    registry.register(PptxConverter())
-    registry.register(XlsxConverter())
-    registry.register(HtmlConverter())
-    registry.register(PdfConverter())
-    registry.register(LibreOfficeConverter(timeout_s=settings.soffice_timeout_s))
-    registry.register(HwpConverter())
+    registry = build_registry(settings)
 
     cache = Cache(settings.cache_dir)
     pool = ConcurrencyPool(cpu_workers=capabilities.cpu_workers)
