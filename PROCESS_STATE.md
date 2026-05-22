@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (**M1b 완료 + Codex 차단 0건 + 권고 3건 전부 반영(M1b-harden)** — 228 passed/1 skipped, 표 셀 escaping·golden CI 가드·손상 OOXML SSE 테스트 구현. 다음: (선택) 태그/재리뷰)
+**최종 갱신**: 2026-05-22 (**M2 Task 3 완료** — GPU dispatch in /convert: `_run_conversion_stream` 헬퍼 추출 + GPU 브랜치(`gpu_lock` + `queued` 이벤트). 229 passed/1 skipped, ruff clean. commit `929dafa`. 다음: M2 Task 4 (PDF 컨버터 등록 + SSE 통합 테스트))
 
 ---
 
