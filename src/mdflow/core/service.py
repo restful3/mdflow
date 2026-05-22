@@ -117,7 +117,12 @@ class ConversionService:
             options=req.options,
             metadata={"format": lookup.detected_format},
         )
-        result = lookup.converter.convert(ctx, progress)
+        try:
+            result = lookup.converter.convert(ctx, progress)
+        except MdflowError:
+            raise
+        except Exception as e:
+            raise MdflowError(ErrorCode.CONVERSION_FAILED, str(e)) from e
 
         enriched_meta = dict(result.metadata)
         enriched_meta.setdefault("converter", lookup.converter.name)

@@ -116,6 +116,40 @@ def test_convert_empty_multipart_returns_400():
     assert r.status_code == 400
 
 
+def test_convert_converter_exception_streams_conversion_failed():
+    from mdflow.converters.base import ConversionResult  # noqa: F401
+
+    class BoomConverter:
+        name = "boom"
+        formats = ("txt",)
+        requires_gpu = False
+
+        def can_handle(self, ctx):
+            return ctx.format in self.formats
+
+        def convert(self, ctx, progress):
+            progress("half", 50)
+            raise ValueError("boom")
+
+    app = create_app()
+
+    def _register(state_app):
+        from mdflow.core.registry import Registry
+
+        reg = Registry()
+        reg.register(BoomConverter())
+        state_app.state.registry = reg
+        state_app.state.service.registry = reg
+
+    with TestClient(app) as client:
+        _register(app)
+        r = client.post("/convert", files={"file": ("a.txt", b"anything", "text/plain")})
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    assert events[-1][0] == "error"
+    assert events[-1][1]["code"] == "CONVERSION_FAILED"
+
+
 def test_convert_streams_progress_events_in_order(monkeypatch):
     """A converter that reports progress must surface ordered progress
     events between started and done.

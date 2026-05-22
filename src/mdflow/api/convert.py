@@ -9,6 +9,7 @@ an asyncio.Queue that the SSE generator drains.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -16,10 +17,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from starlette.datastructures import UploadFile
 
-from mdflow.core.errors import MdflowError
+from mdflow.core.errors import ErrorCode, MdflowError
 from mdflow.core.events import Cached, Done, Error, Progress, Started
 from mdflow.core.service import ConvertRequest
 from mdflow.core.url_fetch import FetchResult, fetch_url
+
+logger = logging.getLogger(__name__)
 
 _PCT_DONE = 100
 
@@ -117,12 +120,34 @@ def register_convert_route(app: FastAPI) -> None:
                     "error", Error(code=e.code.value, message=e.message, retryable=e.retryable)
                 )
                 return
+            except Exception:
+                logger.exception("unexpected error in /convert stream (fetch)")
+                yield _sse(
+                    "error",
+                    Error(
+                        code=ErrorCode.INTERNAL.value,
+                        message="internal error",
+                        retryable=ErrorCode.INTERNAL.retryable,
+                    ),
+                )
+                return
 
             try:
                 lr = await loop.run_in_executor(pool.cpu_executor, service.lookup, req)
             except MdflowError as e:
                 yield _sse(
                     "error", Error(code=e.code.value, message=e.message, retryable=e.retryable)
+                )
+                return
+            except Exception:
+                logger.exception("unexpected error in /convert stream (lookup)")
+                yield _sse(
+                    "error",
+                    Error(
+                        code=ErrorCode.INTERNAL.value,
+                        message="internal error",
+                        retryable=ErrorCode.INTERNAL.retryable,
+                    ),
                 )
                 return
 
@@ -147,6 +172,17 @@ def register_convert_route(app: FastAPI) -> None:
             except MdflowError as e:
                 yield _sse(
                     "error", Error(code=e.code.value, message=e.message, retryable=e.retryable)
+                )
+                return
+            except Exception:
+                logger.exception("unexpected error in /convert stream (run_conversion)")
+                yield _sse(
+                    "error",
+                    Error(
+                        code=ErrorCode.INTERNAL.value,
+                        message="internal error",
+                        retryable=ErrorCode.INTERNAL.retryable,
+                    ),
                 )
                 return
             yield _sse("done", _done_event(resp.result, fetch_meta))
