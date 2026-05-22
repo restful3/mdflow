@@ -1,6 +1,7 @@
 """POST /convert SSE streaming."""
 
 import asyncio
+import contextlib
 import json
 
 import httpx
@@ -389,3 +390,125 @@ def test_gpu_converter_error_releases_lock_and_streams_conversion_failed():
     events = _parse_sse(r.text)
     assert events[-1][0] == "error"
     assert dict(events)["error"]["code"] == "CONVERSION_FAILED"
+
+
+async def test_gpu_disconnect_keeps_semaphore_until_task_completes():
+    """Client disconnect mid-conversion must NOT free the GPU semaphore while
+    the executor thread is still running (it can't be cancelled) — otherwise a
+    second GPU conversion could run concurrently and break VRAM serialization.
+    The semaphore is released only when the conversion task actually finishes.
+
+    Driven via raw ASGI (httpx ASGITransport buffers the whole response, so it
+    can't observe mid-flight state). We feed the body, let the response stream
+    its first chunk, send http.disconnect, and watch the semaphore.
+    """
+    import threading
+
+    in_convert = threading.Event()
+    release = threading.Event()
+
+    class _BlockingGpuConverter:
+        name = "blocking-gpu"
+        formats = ("txt",)
+        requires_gpu = True
+
+        def can_handle(self, ctx):
+            return ctx.format in self.formats
+
+        def convert(self, ctx, progress):
+            from mdflow.converters.base import ConversionResult
+
+            in_convert.set()
+            release.wait(timeout=5)
+            return ConversionResult(markdown="gpu", metadata={})
+
+    boundary = "BNDRY"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="a.txt"\r\n'
+        "Content-Type: text/plain\r\n\r\n"
+        "hi\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/convert",
+        "raw_path": b"/convert",
+        "query_string": b"",
+        "root_path": "",
+        "scheme": "http",
+        "headers": [
+            (b"host", b"t"),
+            (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            (b"content-length", str(len(body)).encode()),
+        ],
+        "server": ("t", 80),
+        "client": ("t", 1234),
+    }
+
+    do_disconnect = asyncio.Event()
+    first_chunk = asyncio.Event()
+    body_sent = False
+
+    async def receive():
+        nonlocal body_sent
+        if not body_sent:
+            body_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await do_disconnect.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.body" and message.get("body"):
+            first_chunk.set()
+
+    app = create_app()
+    async with app.router.lifespan_context(app):
+        _swap_registry(app, _BlockingGpuConverter())
+        sem = app.state.pool.gpu_semaphore
+
+        app_task = asyncio.ensure_future(app(scope, receive, send))
+        # Wait until the response has emitted its first body chunk (the GPU
+        # branch has acquired the semaphore and the converter is running).
+        await asyncio.wait_for(first_chunk.wait(), timeout=5)
+        await asyncio.to_thread(in_convert.wait, 5)
+        assert sem.locked() is True  # held while converting
+
+        do_disconnect.set()  # client disconnects mid-conversion
+        await asyncio.sleep(0.3)
+        assert sem.locked() is True, "semaphore freed on disconnect while task still running"
+
+        release.set()  # let the executor task finish -> done-callback releases
+        for _ in range(50):
+            if not sem.locked():
+                break
+            await asyncio.sleep(0.1)
+        assert sem.locked() is False
+
+        app_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await app_task
+
+
+async def test_gpu_cached_hit_skips_gpu_branch_even_when_semaphore_busy():
+    """A cache hit returns cached->done BEFORE the GPU branch, so it must not
+    emit queued/started or touch the GPU semaphore even when it is held."""
+    app = create_app()
+    async with app.router.lifespan_context(app):
+        _swap_registry(app, _FakeGpuConverter())
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+            r1 = await client.post("/convert", files={"file": ("a.txt", b"cacheme", "text/plain")})
+            assert [k for k, _ in _parse_sse(r1.text)][-1] == "done"  # cache populated
+            await app.state.pool.gpu_semaphore.acquire()  # GPU busy
+            try:
+                r2 = await client.post(
+                    "/convert", files={"file": ("a.txt", b"cacheme", "text/plain")}
+                )
+            finally:
+                app.state.pool.gpu_semaphore.release()
+    kinds = [k for k, _ in _parse_sse(r2.text)]
+    assert kinds == ["cached", "done"]

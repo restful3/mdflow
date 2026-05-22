@@ -53,24 +53,18 @@ async def _drain_until_done(q: asyncio.Queue, task: asyncio.Future) -> AsyncIter
 
 
 async def _run_conversion_stream(
-    loop: Any,
-    pool: Any,
-    service: Any,
-    req: Any,
     lr: Any,
-    on_progress: Any,
+    task: asyncio.Future,
     q: asyncio.Queue,
     fetch_meta: dict[str, Any] | None,
 ) -> AsyncIterator[str]:
-    """Emit started -> progress* -> done|error for a cache miss. The GPU
-    branch in stream() wraps this in pool.gpu_lock(); CPU converters call
-    it directly."""
+    """Emit started -> progress* -> done|error for an already-scheduled
+    conversion `task`. The caller owns task creation and (for GPU) the
+    semaphore lifecycle, so a client disconnect that closes this generator
+    cannot release the GPU slot while the executor thread is still running."""
     yield _sse(
         "started",
         Started(converter=lr.converter.name, gpu=lr.converter.requires_gpu, sha256=lr.sha),
-    )
-    task = asyncio.ensure_future(
-        loop.run_in_executor(pool.cpu_executor, service.run_conversion, req, lr, on_progress)
     )
     async for ev in _drain_until_done(q, task):
         yield _sse("progress", ev)
@@ -213,18 +207,31 @@ def register_convert_route(app: FastAPI) -> None:
                 yield _sse("done", _done_event(lr.cached, fetch_meta))
                 return
 
+            def _start() -> asyncio.Future:
+                return asyncio.ensure_future(
+                    loop.run_in_executor(
+                        pool.cpu_executor, service.run_conversion, req, lr, on_progress
+                    )
+                )
+
             if lr.converter.requires_gpu:
                 if pool.gpu_semaphore.locked():
                     yield _sse("queued", Queued(reason="gpu_busy", position=1))
-                async with pool.gpu_lock():
-                    async for chunk in _run_conversion_stream(
-                        loop, pool, service, req, lr, on_progress, q, fetch_meta
-                    ):
-                        yield chunk
+                # Hold the GPU slot for the WHOLE compute. Acquire here and
+                # release via the task's done-callback (NOT this generator's
+                # scope): a client disconnect closes the generator while the
+                # executor thread keeps running and cannot be cancelled, so a
+                # scope-bound release would free the slot mid-compute and let a
+                # second GPU conversion run concurrently — breaking VRAM
+                # serialization (Codex M2a blocker).
+                await pool.gpu_semaphore.acquire()
+                task = _start()
+                task.add_done_callback(lambda _: pool.gpu_semaphore.release())
+                async for chunk in _run_conversion_stream(lr, task, q, fetch_meta):
+                    yield chunk
             else:
-                async for chunk in _run_conversion_stream(
-                    loop, pool, service, req, lr, on_progress, q, fetch_meta
-                ):
+                task = _start()
+                async for chunk in _run_conversion_stream(lr, task, q, fetch_meta):
                     yield chunk
 
         return StreamingResponse(stream(), media_type="text/event-stream")
