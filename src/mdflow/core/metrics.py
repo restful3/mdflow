@@ -1,8 +1,15 @@
 """In-process request metrics surfaced on /capabilities (PRD §12).
 
-Counters only (no PII/content). Updated from the single event loop in the
-/convert SSE path, so plain int/float increments need no lock. Full
-metrics backends (Prometheus) are v2.
+Single-process best-effort counters (no PII/content). Writes happen on the
+/convert event loop (non-awaiting int/float increments under the GIL); the
+/capabilities read may run in a threadpool and is eventually consistent (a
+read can momentarily observe a record() mid-update — harmless, converges on
+the next snapshot). Full metrics backends (Prometheus) are v2.
+
+`requests` counts conversion attempts that reached the SSE stream (success,
+conversion/fetch/lookup failure, or cache hit). Pre-stream rejections
+(400 invalid input, 413 too large) are returned before the stream and are
+NOT counted here. HTTP /convert only — the MCP path is not aggregated (v1).
 """
 
 from __future__ import annotations

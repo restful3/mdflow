@@ -39,6 +39,14 @@ def test_convert_missing_file():
     assert runner.invoke(app, ["convert", "/no/such/file.txt"]).exit_code != 0
 
 
+def test_convert_unwritable_output(tmp_path):
+    p = tmp_path / "a.txt"
+    p.write_text("data")
+    out = tmp_path / "nope" / "out.md"  # parent dir does not exist -> OSError
+    r = runner.invoke(app, ["convert", str(p), "-o", str(out)])
+    assert r.exit_code == 1
+
+
 def test_serve_invokes_uvicorn(monkeypatch):
     calls = {}
     import mdflow.cli as cli

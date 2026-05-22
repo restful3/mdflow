@@ -58,7 +58,11 @@ def convert(
         raise typer.Exit(1) from e
 
     if output is not None:
-        output.write_text(markdown, encoding="utf-8")
+        try:
+            output.write_text(markdown, encoding="utf-8")
+        except OSError as e:
+            typer.secho(f"cannot write output: {e}", err=True, fg=typer.colors.RED)
+            raise typer.Exit(1) from e
     else:
         typer.echo(markdown)
 

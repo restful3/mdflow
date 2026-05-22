@@ -237,4 +237,5 @@ CMD ["mdflow", "serve", "--host", "0.0.0.0", "--port", "8000"]
 - **GPU Docker 이미지 / Marker**: M2b 후속.
 - **MCP 경로 메트릭**: v1은 HTTP `/convert`만. MCP runtime에도 Metrics 주입은 후속.
 - **Prometheus 익스포트, CI 파이프라인, CLI 배치**: v2/후속.
-- **메트릭 thread-safety**: 단일 루프 가정. 멀티프로세스 배포 시 집계는 별도 설계(v2).
+- **메트릭 thread-safety**: best-effort 단일 프로세스 카운터. `/convert` 루프에서 write, `/capabilities`(sync route, threadpool)에서 read — eventually consistent(중간값 순간 노출 무해). 멀티프로세스 집계는 v2.
+- **CLI size cap 미적용 (Codex M5 권고 4, 의도적)**: HTTP/MCP는 `MDFLOW_MAX_INPUT_MB`로 서버를 보호하지만, CLI는 로컬 단발 도구라 사용자 자신의 파일 변환에 서버-보호 cap을 강제하지 않는다(local convenience). 세 transport 계약 통일이 필요하면 후속에서 옵션화.
