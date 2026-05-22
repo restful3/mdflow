@@ -1,0 +1,13 @@
+.venv/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tests/
+archive/
+docs/
+*.md
+HANDOFF.md
+.agent_io/
