@@ -148,6 +148,16 @@ def test_convert_converter_exception_streams_conversion_failed():
     assert events[-1][1]["code"] == "CONVERSION_FAILED"
 
 
+def test_convert_file_over_size_cap_returns_413(monkeypatch):
+    monkeypatch.setenv("MDFLOW_MAX_INPUT_MB", "1")
+    monkeypatch.setenv("MDFLOW_MAX_URL_INPUT_MB", "1")  # validator: max_url <= max_input
+    app = create_app()
+    big = b"x" * (1024 * 1024 + 10)  # just over 1 MB
+    with TestClient(app) as client:
+        r = client.post("/convert", files={"file": ("big.txt", big, "text/plain")})
+    assert r.status_code == 413
+
+
 def test_convert_streams_progress_events_in_order(monkeypatch):
     """A converter that reports progress must surface ordered progress
     events between started and done.

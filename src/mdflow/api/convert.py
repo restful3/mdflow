@@ -58,7 +58,9 @@ def register_convert_route(app: FastAPI) -> None:
         service = request.app.state.service
         pool = request.app.state.pool
         url_policy = request.app.state.url_policy
+        settings = request.app.state.settings
         loop = asyncio.get_running_loop()
+        max_bytes = settings.max_input_mb * 1024 * 1024
 
         file_bytes: bytes | None = None
         filename: str | None = None
@@ -68,7 +70,7 @@ def register_convert_route(app: FastAPI) -> None:
             form = await request.form()
             upload = form.get("file")
             if isinstance(upload, UploadFile):
-                file_bytes = await upload.read()
+                file_bytes = await upload.read(max_bytes + 1)
                 filename = upload.filename
         elif content_type.startswith("application/json"):
             body = await request.json()
@@ -80,6 +82,12 @@ def register_convert_route(app: FastAPI) -> None:
             raise HTTPException(
                 status_code=400,
                 detail="provide exactly one of: multipart 'file' or JSON 'url'",
+            )
+
+        if has_file and len(file_bytes) > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"file exceeds MDFLOW_MAX_INPUT_MB ({settings.max_input_mb} MB)",
             )
 
         async def stream() -> AsyncIterator[str]:
