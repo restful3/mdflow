@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (**M1b 컨버터 4종 구현 완료** — subagent-driven, 217 passed/1 skipped, opus holistic 리뷰 ready-to-ship. 다음: Codex milestone 묶음 리뷰)
+**최종 갱신**: 2026-05-22 (**M1b 완료 + Codex 묶음 리뷰 차단 0건** — 컨버터 4종, 217 passed/1 skipped, opus holistic ready-to-ship, Codex 권고 3건은 M1 hardening으로 분리. 다음: M1 hardening 또는 태그)
 
 ---
 
@@ -79,7 +79,7 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M1b 컨버터 구현 완료(subagent-driven, opus holistic 리뷰 ready-to-ship) → Codex 묶음 리뷰 대기**. M1a: Codex 1·2차 최종 승인. M1b: 설계 + 구현 계획 + 컨버터 4종(docx/pptx/xlsx/html) + 골든 하니스 + lifespan 등록 + 포맷별 SSE 통합 테스트 전부 구현·task별 2단계 리뷰 통과. **다음: Codex milestone 묶음 리뷰**
+- **현재 phase**: **M1b 컨버터 구현 + Codex milestone 리뷰 완료 (차단 0건) → M1b 사실상 채택**. M1a: Codex 1·2차 최종 승인. M1b: 설계 + 구현 계획 + 컨버터 4종(docx/pptx/xlsx/html) + 골든 하니스 + lifespan 등록 + 포맷별 SSE 통합 테스트 + opus holistic(ready-to-ship) + Codex 묶음 리뷰(차단 0). **다음: M1b 권고 3건을 M1 hardening으로 분리 / (선택) 태그**
 - **테스트**: **217 passed / 1 skipped** (`.venv/bin/pytest`; M1b로 +26). 린트 clean
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
 - **git**: master 브랜치, 태그 **`v0.0.1-m0`**. M1b 코드 커밋 `298975a`(deps)\~`c72dd4b`(등록+통합). 가장 최근 `c72dd4b feat(m1b): register office converters + per-format SSE integration tests`. 트리 깨끗(state 갱신 제외)
@@ -100,8 +100,9 @@
   - **권고 2 (client disconnect 시 task 미취소) — DEFER** (Codex도 동의). §7 M1a 알려진 제약 #2 유지. M1b/M2 긴 변환 붙을 때 처리
   - **2차 재리뷰 (round-2)**: 위 반영분(`git diff 96ceffd..HEAD`)을 Codex에 재송부 → 첫 줄 정확히 `===CODEX_FINAL_APPROVAL===` 출력. 추가 수정 파일 없음 = **잔존 이견 0건, M1a 최종 확정**. (Codex가 화면 토큰만 출력하고 별도 round-2 파일은 미생성 — 승인이므로 정상)
 - **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건**. #1(delete/purge OSError)·#4(shutdown in-flight) DEFER M1. **#3(pool↔service)는 M1a에서 해소**
+- **M1b Codex milestone 리뷰**: `docs/reviews/2026-05-22-m1b-office-converters-codex.md` — **차단 0건**. §6 예외 전파·progress 동기 호출·Protocol·등록 완전성 모두 통과 확인. 권고 3건(전부 후속 hardening): ① pptx/xlsx(및 csv) Markdown 표 셀 escaping(`|`·개행) — 공통 helper로, ② golden update mode(`MDFLOW_UPDATE_GOLDEN`)의 CI 누출 가드(이중 opt-in 또는 CI hard-fail), ③ 손상 OOXML 입력 → SSE `CONVERSION_FAILED` 통합 테스트 1\~2건. 수용 2건(docx 빈 헤더, `_decode` 재사용)에 Codex 동의. (참고: Codex 자체 pytest는 191/1로 보고했으나 이는 Codex 환경이 신규 테스트를 미수집한 것 — 우리 측 다중 독립 실행은 일관되게 217/1)
 - **다음 액션 (다음 1\~3)**:
-  1. **M1b Codex milestone 묶음 리뷰** (`git diff eeb5d88 c72dd4b`) — 송부 후 `docs/reviews/2026-05-22-m1b-office-converters-codex.md`에 결과 기록. ⚠️ tmux `md:codex` 윈도우를 stale supervisor 루프가 점유 중이라 그 프로세스 정리/재지정 필요
+  1. **M1b 권고 3건 → 별도 "M1 hardening" 슬라이스로 분리** (아래 #2 항목들과 합류). M1b 자체는 차단 0으로 채택. (선택) `v0.1.0-m1b` 류 태그는 사용자 판단
   2. M1 잔여 DEFER 항목은 별도 "M1 hardening" 슬라이스로 분리 (cache delete/purge OSError 정규화, shutdown/disconnect 정책, URL temp streaming, language_hint) — M1b 범위에서 제외 확정
   3. **M1b 후속(non-blocking, opus holistic 리뷰 도출)**: (a) docx 표 헤더가 본문 행으로 강등됨 — python-docx/mammoth가 `<th>` 없이 `<td>`만 내보내 markdownify가 빈 헤더 합성. 골든에 충실히 캡처됨. 헤더 행이 있는 실제 docx에선 의미상 부정확 → `_html_to_md` docx 경로에서 첫 `<tr>`을 헤더 승격하거나 한계 문서화. (b) `html.py`가 `text._decode`(사설) 교차 import — 세 번째 소비자 생기면 `converters/_decode.py`로 승격
 
