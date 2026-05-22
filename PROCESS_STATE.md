@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (**M1a SSE 인프라 구현 완료** — Task 0\~8 TDD + per-task 2단계 리뷰 + 전체 최종 리뷰 통과. 다음: M1a Codex 묶음 리뷰 → M1b)
+**최종 갱신**: 2026-05-22 (**M1b 구현 계획 작성 완료** — `docs/superpowers/plans/2026-05-22-m1b-office-converters.md` (Task 0\~7). 다음: 실행 방식 선택 후 subagent-driven 구현)
 
 ---
 
@@ -79,10 +79,10 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M1a 완료(Codex 최종 승인) → M1b 설계 완료, plan 대기**. M1a: Task 0\~8 TDD + per-task 2단계 리뷰 + opus 최종 리뷰 + Codex 1·2차 리뷰 최종 승인. M1b: 브레인스토밍 완료, 설계 문서 작성됨(`docs/specs/2026-05-22-m1b-office-converters-design.md`). **다음: spec 검토 → writing-plans**
+- **현재 phase**: **M1a 완료(Codex 최종 승인) → M1b 설계 + 구현 계획 작성 완료, 구현 대기**. M1a: Task 0\~8 TDD + per-task 2단계 리뷰 + opus 최종 리뷰 + Codex 1·2차 리뷰 최종 승인. M1b: 브레인스토밍·설계(`docs/specs/2026-05-22-m1b-office-converters-design.md`)·구현 계획(`docs/superpowers/plans/2026-05-22-m1b-office-converters.md`, Task 0\~7) 완료. **다음: 실행 방식 선택 → subagent-driven 구현**
 - **테스트**: **191 passed / 1 skipped** (`.venv/bin/python -m pytest`; M1a로 +16; Codex 반영으로 +5)
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
-- **git**: master 브랜치, 태그 **`v0.0.1-m0`**, 트리 깨끗. M1a 16 commits (`b36836b`\~`dd761c7`). 가장 최근 `dd761c7 docs/refactor(m1): document ProgressCallback sync invariant + close upload form`
+- **git**: master 브랜치, 태그 **`v0.0.1-m0`**. 가장 최근 `02efad1 docs: session handoff for M1b writing-plans`. 미커밋: `docs/superpowers/plans/2026-05-22-m1b-office-converters.md`(신규, untracked)
 - **실행 방식**: Subagent-Driven Development (`superpowers:subagent-driven-development`). task별 fresh implementer subagent + spec-compliance 리뷰 → code-quality 리뷰, 전체 완료 후 opus 최종 holistic 리뷰
 - **M1a 문서**:
   - 설계: `docs/specs/2026-05-22-m1a-sse-infrastructure-design.md`
@@ -101,7 +101,7 @@
   - **2차 재리뷰 (round-2)**: 위 반영분(`git diff 96ceffd..HEAD`)을 Codex에 재송부 → 첫 줄 정확히 `===CODEX_FINAL_APPROVAL===` 출력. 추가 수정 파일 없음 = **잔존 이견 0건, M1a 최종 확정**. (Codex가 화면 토큰만 출력하고 별도 round-2 파일은 미생성 — 승인이므로 정상)
 - **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건**. #1(delete/purge OSError)·#4(shutdown in-flight) DEFER M1. **#3(pool↔service)는 M1a에서 해소**
 - **다음 액션 (다음 1\~3)**:
-  1. **M1b 설계 완료** (`docs/specs/2026-05-22-m1b-office-converters-design.md`) — 사용자 spec 검토 후 `superpowers:writing-plans`로 구현 계획 작성 → subagent-driven 구현
+  1. **M1b 구현 계획 작성 완료** (`docs/superpowers/plans/2026-05-22-m1b-office-converters.md`, Task 0\~7) — 사용자가 실행 방식(subagent-driven 권장 / inline) 선택 후 구현 착수
   2. M1 잔여 DEFER 항목은 별도 "M1 hardening" 슬라이스로 분리 (cache delete/purge OSError 정규화, shutdown/disconnect 정책, URL temp streaming, language_hint) — M1b 범위에서 제외 확정
   3. M1b 구현 후 Codex 묶음 리뷰(milestone 케이던스)
 
