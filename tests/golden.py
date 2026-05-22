@@ -31,6 +31,14 @@ def assert_golden(actual: str, golden_name: str) -> None:
     path = GOLDEN_ROOT / golden_name
     norm = normalize(actual)
     if os.environ.get("MDFLOW_UPDATE_GOLDEN"):
+        # A leaked MDFLOW_UPDATE_GOLDEN in CI would turn every golden
+        # comparison into rewrite-and-pass, silently disabling the suite.
+        # Refuse to write under CI rather than pass unconditionally.
+        if os.environ.get("CI"):
+            raise AssertionError(
+                "MDFLOW_UPDATE_GOLDEN is set under CI — refusing to rewrite goldens "
+                "(would make golden tests pass unconditionally). Unset it in CI."
+            )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(norm, encoding="utf-8")
         return
