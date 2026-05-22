@@ -21,6 +21,7 @@ from mdflow.api.admin import register_admin_routes
 from mdflow.api.convert import register_convert_route
 from mdflow.core.cache import Cache
 from mdflow.core.service import ConversionService
+from mdflow.mcp.server import build_mcp
 from mdflow.runtime.capabilities import Capabilities, detect
 from mdflow.runtime.composition import build_registry, url_policy_from_settings
 from mdflow.runtime.concurrency import ConcurrencyPool
@@ -56,7 +57,19 @@ async def _lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="mdflow", lifespan=_lifespan)
+    # The MCP streamable-HTTP sub-app has its own lifespan (session manager);
+    # the FastAPI lifespan must enter both _lifespan (mdflow runtime on
+    # app.state) and the MCP app's lifespan. The MCP server builds its own
+    # runtime singletons but shares the disk cache_dir, so get_cached sees
+    # entries written by /convert.
+    mcp_app = build_mcp().http_app(path="/")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        async with _lifespan(app), mcp_app.lifespan(app):
+            yield
+
+    app = FastAPI(title="mdflow", lifespan=lifespan)
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -65,4 +78,5 @@ def create_app() -> FastAPI:
 
     register_admin_routes(app)
     register_convert_route(app)
+    app.mount("/mcp", mcp_app)
     return app
