@@ -18,10 +18,7 @@ def test_protocol_attrs():
     assert conv.requires_gpu is False
     assert conv.can_handle(_ctx(b"")) is True
     assert (
-        conv.can_handle(
-            ConversionContext(data=b"", filename_hint="x.pdf", format="pdf")
-        )
-        is False
+        conv.can_handle(ConversionContext(data=b"", filename_hint="x.pdf", format="pdf")) is False
     )
 
 

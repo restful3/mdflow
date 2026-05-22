@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -541,3 +542,40 @@ def test_convert_ppt_streams_started_done(sample_ppt_bytes):
     assert by_event["started"]["converter"] == "office-libreoffice"
     assert by_event["started"]["gpu"] is False
     assert "First Slide" in by_event["done"]["markdown"]
+
+
+_HWP_FIXTURE = Path(__file__).parent.parent / "fixtures" / "hwp" / "sample.hwp"
+
+
+def _pyhwp_available() -> bool:
+    try:
+        import hwp5.hwp5html  # noqa: F401
+        import hwp5.xmlmodel  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def test_convert_hwp_streams_started_done(monkeypatch):
+    from mdflow.converters.hwp import HwpConverter
+
+    xhtml = b"<html><body><h1>HWP Heading</h1><p>body text</p></body></html>"
+    monkeypatch.setattr(HwpConverter, "_hwp_to_xhtml", lambda self, src_path: xhtml)
+    by_event, kinds = _run_convert("sample.hwp", b"fake-hwp", "application/x-hwp")
+    assert kinds[0] == "started" and kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "hwp-pyhwp"
+    assert by_event["started"]["gpu"] is False
+    assert "HWP Heading" in by_event["done"]["markdown"]
+
+
+@pytest.mark.skipif(
+    not (_HWP_FIXTURE.exists() and _pyhwp_available()),
+    reason="needs pyhwp installed and tests/fixtures/hwp/sample.hwp present",
+)
+def test_convert_hwp_real_fixture():
+    data = _HWP_FIXTURE.read_bytes()
+    by_event, kinds = _run_convert("sample.hwp", data, "application/x-hwp")
+    assert kinds[-1] == "done"
+    assert by_event["started"]["converter"] == "hwp-pyhwp"
+    assert len(by_event["done"]["markdown"]) > 0
