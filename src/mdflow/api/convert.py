@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from mdflow.core.errors import MdflowError
-from mdflow.core.events import Done, Error, Progress, Started
+from mdflow.core.events import Cached, Done, Error, Progress, Started
 from mdflow.core.service import ConvertRequest
 
 
@@ -57,6 +57,18 @@ def register_convert_route(app: FastAPI) -> None:
             except MdflowError as e:
                 yield _sse(
                     "error", Error(code=e.code.value, message=e.message, retryable=e.retryable)
+                )
+                return
+
+            if lr.cached is not None:
+                yield _sse("cached", Cached(sha256=lr.sha, cached_at=lr.cached_at or ""))
+                yield _sse(
+                    "done",
+                    Done(
+                        markdown=lr.cached.markdown,
+                        metadata=lr.cached.metadata,
+                        assets=lr.cached.assets,
+                    ),
                 )
                 return
 

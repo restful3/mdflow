@@ -39,3 +39,17 @@ def test_convert_file_miss_streams_started_then_done():
     assert started["gpu"] is False
     done = dict(events)["done"]
     assert done["markdown"] == "hello mdflow"
+
+
+def test_convert_file_hit_streams_cached_then_done():
+    app = create_app()
+    with TestClient(app) as client:
+        files = {"file": ("a.txt", b"hello mdflow", "text/plain")}
+        client.post("/convert", files=files)  # populate cache
+        r = client.post("/convert", files={"file": ("a.txt", b"hello mdflow", "text/plain")})
+    events = _parse_sse(r.text)
+    kinds = [e[0] for e in events]
+    assert kinds == ["cached", "done"]
+    cached = dict(events)["cached"]
+    assert "cached_at" in cached
+    assert dict(events)["done"]["markdown"] == "hello mdflow"
