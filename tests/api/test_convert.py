@@ -365,3 +365,27 @@ def test_convert_corrupted_pdf_streams_conversion_failed():
     by_event, kinds = _run_convert("broken.pdf", b"not a real pdf at all", "application/pdf")
     assert kinds[-1] == "error"
     assert by_event["error"]["code"] == "CONVERSION_FAILED"
+
+
+class _BoomGpuConverter:
+    name = "boom-gpu"
+    formats = ("txt",)
+    requires_gpu = True
+
+    def can_handle(self, ctx):
+        return ctx.format in self.formats
+
+    def convert(self, ctx, progress):
+        raise ValueError("gpu boom")
+
+
+def test_gpu_converter_error_releases_lock_and_streams_conversion_failed():
+    app = create_app()
+    with TestClient(app) as client:
+        _swap_registry(app, _BoomGpuConverter())
+        r = client.post("/convert", files={"file": ("a.txt", b"hi", "text/plain")})
+        # The GPU semaphore must be released even when the converter raises.
+        assert app.state.pool.gpu_semaphore.locked() is False
+    events = _parse_sse(r.text)
+    assert events[-1][0] == "error"
+    assert dict(events)["error"]["code"] == "CONVERSION_FAILED"
