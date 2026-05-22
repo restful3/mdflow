@@ -158,6 +158,32 @@ def test_convert_file_over_size_cap_returns_413(monkeypatch):
     assert r.status_code == 413
 
 
+def test_convert_json_non_object_returns_400():
+    app = create_app()
+    with TestClient(app) as client:
+        # a JSON list, not an object
+        r = client.post(
+            "/convert", content=b"[1, 2, 3]", headers={"content-type": "application/json"}
+        )
+    assert r.status_code == 400
+
+
+def test_convert_json_non_string_url_returns_400():
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.post("/convert", json={"url": 123})
+    assert r.status_code == 400
+
+
+def test_convert_invalid_json_returns_400():
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.post(
+            "/convert", content=b"{not json", headers={"content-type": "application/json"}
+        )
+    assert r.status_code == 400
+
+
 def test_convert_streams_progress_events_in_order(monkeypatch):
     """A converter that reports progress must surface ordered progress
     events between started and done.

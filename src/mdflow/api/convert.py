@@ -9,6 +9,7 @@ an asyncio.Queue that the SSE generator drains.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -73,8 +74,15 @@ def register_convert_route(app: FastAPI) -> None:
                 file_bytes = await upload.read(max_bytes + 1)
                 filename = upload.filename
         elif content_type.startswith("application/json"):
-            body = await request.json()
+            try:
+                body = await request.json()
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+            if not isinstance(body, dict):
+                raise HTTPException(status_code=400, detail="JSON body must be an object")
             url = body.get("url")
+            if url is not None and not (isinstance(url, str) and url):
+                raise HTTPException(status_code=400, detail="'url' must be a non-empty string")
 
         has_file = file_bytes is not None
         has_url = bool(url)
