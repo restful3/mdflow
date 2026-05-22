@@ -82,7 +82,7 @@
 - **현재 phase**: **M2a 완료·Codex 최종 승인 → 채택**. M1b: 채택(`v0.1.0-m1b`). M2a: `pdf-pymupdf4llm` 컨버터 + `convert.py` GPU dispatch + 등록 + 테스트. **Codex 1차**(`docs/reviews/2026-05-22-m2-pdf-codex.md`): 차단 1건(disconnect 시 GPU 세마포어가 in-flight executor task보다 먼저 해제 → VRAM 직렬화 깨짐) → **수정 `ca299ec`**: 세마포어를 task done-callback으로 해제(제너레이터 scope 아님) + 결정적 raw-ASGI disconnect 회귀 테스트(구버전 fail 확인). 권고 #1(cached-hit) 반영, #2는 disconnect 테스트로 충족, #3 no-op. **Codex round-2: `===CODEX_FINAL_APPROVAL===`** (잔존 이견 0, 추가 파일 없음 = 정상). **다음: (선택) 태그 / M2b(Marker, GPU 호스트) / M3(LibreOffice)**
 - **테스트**: **240 passed / 1 skipped** (`.venv/bin/pytest`; M2a +12). 린트 clean
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
-- **git**: master 브랜치, 태그 **`v0.0.1-m0`**, **`v0.1.0-m1b`**(@`f687dc4`). M2a 코드 `723d141`(deps)\~`6da0724`(GPU-error 테스트). 가장 최근 `6da0724`. (태그는 로컬만 — push 미실시)
+- **git**: master 브랜치, 태그 **`v0.0.1-m0`**, **`v0.1.0-m1b`**(@`f687dc4`), **`v0.2.0-m2a`**(@`1859d86`, M2a 완료점). M2a 코드 `723d141`(deps)\~`ca299ec`(blocker fix). (태그는 로컬만 — push 미실시)
 - **실행 방식**: Subagent-Driven Development (`superpowers:subagent-driven-development`). task별 fresh implementer subagent + spec-compliance 리뷰 → code-quality 리뷰, 전체 완료 후 opus 최종 holistic 리뷰
 - **M1a 문서**:
   - 설계: `docs/specs/2026-05-22-m1a-sse-infrastructure-design.md`
