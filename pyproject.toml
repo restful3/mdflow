@@ -25,6 +25,7 @@ dependencies = [
     "trafilatura>=1.8",
     "markdownify>=0.11",
     "beautifulsoup4>=4.12",
+    "pymupdf4llm>=0.0.17",
 ]
 
 [project.optional-dependencies]
