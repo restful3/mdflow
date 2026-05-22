@@ -12,6 +12,7 @@ import io
 
 import chardet
 
+from mdflow.converters._md_table import escape_table_cell
 from mdflow.converters.base import (
     ConversionContext,
     ConversionResult,
@@ -48,11 +49,11 @@ def _csv_to_table(text: str) -> str:
         return ""
     header, *body = rows
     width = len(header)
-    out = ["| " + " | ".join(header) + " |"]
+    out = ["| " + " | ".join(escape_table_cell(c) for c in header) + " |"]
     out.append("| " + " | ".join("---" for _ in header) + " |")
     for row in body:
         padded = row + [""] * (width - len(row))
-        out.append("| " + " | ".join(padded[:width]) + " |")
+        out.append("| " + " | ".join(escape_table_cell(c) for c in padded[:width]) + " |")
     return "\n".join(out)
 
 

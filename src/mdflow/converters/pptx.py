@@ -12,6 +12,7 @@ import io
 
 from pptx import Presentation
 
+from mdflow.converters._md_table import escape_table_cell
 from mdflow.converters.base import (
     ConversionContext,
     ConversionResult,
@@ -80,7 +81,7 @@ def _bullets(text_frame) -> str:
 
 
 def _table_to_md(table) -> str:
-    rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+    rows = [[escape_table_cell(cell.text.strip()) for cell in row.cells] for row in table.rows]
     if not rows:
         return ""
     header, *body = rows

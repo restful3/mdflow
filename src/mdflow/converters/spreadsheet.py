@@ -12,6 +12,7 @@ import io
 
 from openpyxl import load_workbook
 
+from mdflow.converters._md_table import escape_table_cell
 from mdflow.converters.base import (
     ConversionContext,
     ConversionResult,
@@ -45,7 +46,7 @@ class XlsxConverter:
 
 
 def _cell(value) -> str:
-    return "" if value is None else str(value)
+    return "" if value is None else escape_table_cell(str(value))
 
 
 def _sheet_to_md(name: str, ws) -> str:

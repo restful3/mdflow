@@ -86,6 +86,13 @@ def test_csv_pads_short_rows_to_header_width():
     assert lines[3] == "| 2 | 3 |  |"
 
 
+def test_csv_escapes_pipe_in_cells():
+    data = b'name,note\nalice,"a|b"\n'
+    conv = TextConverter()
+    out = conv.convert(_ctx(data, "csv"), lambda s, p: None)
+    assert "a\\|b" in out.markdown
+
+
 def test_csv_empty_returns_empty_markdown():
     conv = TextConverter()
     out = conv.convert(_ctx(b"", "csv"), lambda s, p: None)
