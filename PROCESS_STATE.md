@@ -3,7 +3,7 @@
 > 본 문서는 mdflow 프로젝트의 **정본 상태 문서**다. 이전 정본인 `STATE.md`는 `archive/STATE_20260522.md`에 보존되었다. `STATE.md`의 모든 맥락(설계 결정·트레이드오프·리스크·잊지 말 결정)은 본 문서에 그대로 흡수되었다.
 
 **최초 작성**: 2026-05-22
-**최종 갱신**: 2026-05-22 (**M0 완료** — Task 17 `v0.0.1-m0` 태그. 다음은 M1 plan 작성 대기)
+**최종 갱신**: 2026-05-22 (M0 완료 `v0.0.1-m0` + **M1a 설계·구현계획 작성 완료(미구현)** — 세션 클리어 handoff)
 
 ---
 
@@ -79,19 +79,29 @@
 
 ## 2. 한눈에 보기 (현재 상태)
 
-- **현재 phase**: **M0 완료 (DONE)** — `v0.0.1-m0` 태그 완료. **다음은 M1 (사무 포맷 + SSE) plan 작성 대기**
+- **현재 phase**: **M0 완료 (DONE, `v0.0.1-m0`)**. M1을 **M1a(SSE 인프라) → M1b(컨버터)**로 분해. **M1a 설계+구현계획 작성 완료, 구현 미착수** — 다음은 M1a 계획 실행
 - **테스트**: 175 passed / 1 skipped (`.venv/bin/python -m pytest`; smoke 3개 포함, integration 마커)
 - **린트**: `ruff check` + `ruff format --check` 통과 (src tests 전체)
-- **git**: 30+ commits, master 브랜치, 태그 **`v0.0.1-m0`** (가장 최근 `9a88a53 feat(m0): map admin cache MdflowError to 503 (API review #1+#2)`)
+- **git**: 33 commits, master 브랜치, 태그 **`v0.0.1-m0`**, 트리 깨끗 (가장 최근 `c1bd89b docs(m1): M1a SSE infrastructure implementation plan`)
+- **M1a 문서 (다음 세션 시작점)**:
+  - 설계: `docs/specs/2026-05-22-m1a-sse-infrastructure-design.md`
+  - 구현 계획: `docs/superpowers/plans/2026-05-22-m1a-sse-infrastructure.md` (10 task, TDD, Task 0=python-multipart 의존성)
 - **Codex M0 API 리뷰**: `docs/reviews/2026-05-22-m0-api-surface-codex.md` — **차단 0건** (M0 태그 가능). 권고 #1(부분: admin GET MdflowError→503)·#2(unknown 404 body assert) 적용 완료. #1(delete/purge OSError)·#3(pool↔service 연결)·#4(shutdown in-flight 정책) DEFER M1
 - **Codex 리뷰 상태**:
   - 차단 3건 (#1, #2, #3) — 모두 ACCEPT + 코드 반영 + commit 완료
   - 권고 5건 — #4·#5read commit, #5write·#6 코드 반영 + **follow-up 라운드 완료**(`2026-05-22-m0-cache-write-mkdtemp-codex.md`): 추가 #2(mkdtemp OSError wrap) ACCEPT + 적용, 추가 #1(publish race) DEFER (M1); 커밋 보류, #7 DEFER (M1), #8 차단 TDD에 흡수
   - 메모 3건 — #9 DEFER (v1.1), #10 Task 14에서 처리, #11 DEFER (M2)
 - **다음 액션 (다음 1\~3)**:
-  1. **M1 plan 작성** (`writing-plans` 스킬) — docx/pptx/xlsx/html 컨버터 + SSE `/convert` + `convert_url` 통합. 사용자 승인 후 착수
-  2. M1 진입 전 §7 M1 항목 + DEFER된 권고(delete/purge OSError, pool↔service 연결, shutdown 정책) 반영 순서 결정
-  3. (M1 TDD 착수)
+  1. **M1a 계획 실행 모드 선택** — Subagent-Driven(추천, task별 새 subagent + 리뷰) 또는 Inline(`executing-plans`, 체크포인트 배치). 세션 클리어 시 미선택 상태였음
+  2. **M1a 계획 실행** — `docs/superpowers/plans/2026-05-22-m1a-sse-infrastructure.md` Task 0→9 순차 TDD. Task 9에 PROCESS_STATE 갱신 + M1a Codex 리뷰 체크포인트 포함
+  3. M1a 완료(+Codex 리뷰) 후 **M1b** (docx/pptx/xlsx/html 컨버터 + 골든 출력) brainstorming → plan
+
+- **M1a 핵심 설계 결정** (계획/스펙에 상세):
+  - async 핸들러 orchestrate, `ConversionService`는 sync 유지. asyncio.Queue + `call_soon_threadsafe`로 스레드풀 progress 펌프
+  - `convert()`를 `lookup()` + `run_conversion()`으로 분리(wrapper 존치, 회귀 0)해 started(miss)/cached(hit) 구분
+  - 입력: 파일(multipart) + url(JSON). url은 핸들러가 `fetch_url`을 executor에서 직접 호출(=`convert_from_url`은 SSE 경로 미사용, all-in-one convert 호출이라 started-first 불가)
+  - GPU/queued→M2, shutdown drain→후속, content_base64→M4 (M1a 밖)
+  - 권고 #3(pool↔service)는 M1a `/convert`가 `pool.cpu_executor` 사용으로 흡수됨
 
 작업 디렉토리 깨끗.
 
@@ -154,7 +164,7 @@
 |---|---|---|
 | **Phase 0**. 설계 / 합의 | DONE | PRD 14섹션, URL 처리 합의안, M0 plan (17 TDD task) |
 | **Phase M0**. 골격 (skeleton) | **DONE** (17/17, `v0.0.1-m0` 태그) | `pyproject.toml`, `mdflow.core`, `Converter` Protocol, txt/md/csv passthrough, URL fetch helper, ConversionService, FastAPI `/healthz` + admin/cache endpoints |
-| **Phase M1**. 사무 포맷 + SSE | PENDING | docx·pptx·xlsx·html 컨버터, `/convert` SSE 핸들러, 골든 출력 |
+| **Phase M1**. 사무 포맷 + SSE | **IN PROGRESS** (M1a 설계+계획 done, 구현 미착수) | **M1a**: `/convert` SSE 인프라(설계·계획 완료). **M1b**: docx·pptx·xlsx·html 컨버터 + 골든 출력 (미착수) |
 | **Phase M2**. PDF | PENDING | Marker (GPU) + PyMuPDF (CPU) 폴백, 자동 감지 분기 |
 | **Phase M3**. LibreOffice 폴백 | PENDING | doc/ppt/hwp, fallback 체인 |
 | **Phase M4**. MCP | PENDING | FastMCP stdio + HTTP, MCP 4 tool, 진행 알림 |
@@ -355,9 +365,19 @@ PRD 14섹션 구성:
 
 ---
 
-## 7. Phase M1 — 사무 포맷 + SSE [PENDING]
+## 7. Phase M1 — 사무 포맷 + SSE [IN PROGRESS]
 
-- [ ] `/convert` SSE 핸들러 (`POST /convert`, `event: started | progress | cached | done | error`)
+> **분해 결정 (2026-05-22)**: M1을 **M1a(SSE 인프라) → M1b(컨버터)**로 분해. 근거: SSE 오케스트레이션 골격을 기존 TextConverter 위에서 먼저 검증 후 컨버터를 끼움 (작은 슬라이스 패턴). 각 sub-project는 spec→plan→구현 사이클.
+>
+> **M1a [설계+계획 완료, 구현 미착수]** — `POST /convert` SSE 인프라.
+> - 설계: `docs/specs/2026-05-22-m1a-sse-infrastructure-design.md`
+> - 계획: `docs/superpowers/plans/2026-05-22-m1a-sse-infrastructure.md` (10 task TDD)
+> - 다음: 실행 모드 선택(Subagent-Driven 추천 / Inline `executing-plans`) 후 Task 0→9
+>
+> **M1b [미착수]** — docx/pptx/xlsx/html 컨버터 + 골든 출력. M1a 완료 후 brainstorming→plan.
+
+- [ ] **M1a** `/convert` SSE 핸들러 (`event: started | progress | cached | done | error`) + service lookup/run_conversion 분리 + cpu_executor 펌프 + url fetch 통합 (계획 작성됨)
+- [ ] DOCX 컨버터 (mammoth + python-docx 보강) — M1b
 - [ ] DOCX 컨버터 (mammoth + python-docx 보강)
 - [ ] PPTX 컨버터 (python-pptx, 노트 보존)
 - [ ] XLSX 컨버터 (openpyxl, 시트별 표)
@@ -489,12 +509,10 @@ PRD 14섹션 구성:
 
 ## 13. 미결 사항 (다음 세션에서 처리)
 
-- [ ] **권고 #5write + #6 + follow-up #2(mkdtemp wrap) 묶음 커밋** (cache.py / test_cache.py — follow-up 리뷰 ACCEPT 완료, 잘못된 invariant 주석 정정 포함)
-- [ ] **M0 Task 14\~17 진행**:
-  - Task 14: FastAPI 앱 + lifespan + `/healthz` + 메모 #10 helper
-  - Task 15: admin endpoints (`/capabilities`, `/cache/*`)
-  - Task 16: smoke test
-  - Task 17: `v0.0.1-m0` 태그 + 문서화
+- [ ] **M1a 계획 실행** (최우선) — `docs/superpowers/plans/2026-05-22-m1a-sse-infrastructure.md` Task 0→9. 실행 모드(Subagent-Driven 추천 / Inline) 먼저 선택. Task 9에 PROCESS_STATE 갱신 + M1a Codex 묶음 리뷰 포함
+- [x] ~~M0 Task 14\~17~~ — **완료** (`v0.0.1-m0` 태그). 차단 0건 Codex 리뷰 통과
+- [ ] **M1b** (M1a 완료 후) — docx/pptx/xlsx/html 컨버터 + 골든 출력. brainstorming→plan 사이클
+- [ ] **M0 API 리뷰 DEFER 항목** (M1 중 처리): cache delete/purge OSError 정규화(권고 #1 잔여), shutdown in-flight 정책(권고 #4). pool↔service(권고 #3)는 M1a에서 흡수
 - [ ] **PaperFlow 보안 이슈 시정**: "나중에 검토" 결정. 별도 세션. 핵심 발견은 path traversal · SSRF · 약한 기본값 (이전 세션 보고서 참조)
 - [ ] **URL 처리 v1.1 항목** (PRD §13에 4개 항목):
   - SPA / Headless 대응
@@ -510,18 +528,19 @@ PRD 14섹션 구성:
 
 1. `cd ~/workspace/mdflow` (또는 `/media/restful3/data/workspace/mdflow` — 동일 디렉토리)
 2. **이 파일(`PROCESS_STATE.md`)을 먼저 읽기**
-3. 합의안 확인: `docs/reviews/2026-05-21-url-handling-final-agreement.md` (모든 URL 처리 결정의 기준)
-4. plan 확인: `docs/superpowers/plans/2026-05-21-m0-skeleton.md` (남은 Task 14\~17 본문)
-5. 진척 점검:
-   - `git log --oneline | head -25`
-   - `.venv/bin/python -m pytest -q` (158 passed 1 skipped 기대)
-   - `git status` (cache.py / test_cache.py modified가 보이면 권고 #5write+#6 코드 반영 상태)
-6. **다음 액션 — Task 14** (FastAPI 앱 팩토리 + lifespan + `/healthz`):
-   - 새 파일: `src/mdflow/api/app.py`, `tests/api/__init__.py`, `tests/api/test_app.py`
-   - lifespan 와이어: `Settings()` → `detect()` Capabilities → `Registry()` + `TextConverter` register → `Cache(settings.cache_dir)` → `ConcurrencyPool(caps.cpu_workers)` → `ConversionService(registry, cache)`. 모두 `app.state.*`에 저장
-   - `/healthz` 라우트: `{"ok": True, "uptime_s": ...}`
-   - TDD: `tests/api/test_app.py`에 `test_healthz_returns_ok` + `test_app_lifespan_initializes_state`를 먼저 fail로 작성 → fastapi.testclient로 검증
-   - 메모 #10 helper 동시 추가: `url_policy_from_settings(settings) -> UrlPolicy`
+3. M1a 설계+계획 읽기:
+   - `docs/specs/2026-05-22-m1a-sse-infrastructure-design.md` (설계)
+   - `docs/superpowers/plans/2026-05-22-m1a-sse-infrastructure.md` (10 task TDD 계획 — 다음 액션 본문)
+4. 진척 점검:
+   - `git log --oneline | head -10` (가장 최근 `c1bd89b docs(m1): M1a ... plan`)
+   - `git tag -l` (`v0.0.1-m0` 있어야 함)
+   - `.venv/bin/python -m pytest` (175 passed / 1 skipped 기대)
+   - `git status` (깨끗해야 함)
+5. **다음 액션 — M1a 계획 실행**:
+   - 먼저 실행 모드 선택: **Subagent-Driven (추천)** = `superpowers:subagent-driven-development`, 또는 **Inline** = `superpowers:executing-plans`
+   - Task 0 (python-multipart 의존성) → Task 1 (Cache.cached_at) → … → Task 9 (PROCESS_STATE + Codex 리뷰)
+   - 각 task TDD: failing test → fail 확인 → 최소 구현 → pass → commit
+6. M1a 완료 후 Codex 묶음 리뷰(케이던스: milestone 완료 직전), 그 다음 M1b brainstorming→plan
 7. 사용자가 작은 슬라이스를 원하는 패턴 유지 — 한 task를 여러 step으로 분할 가능
 
 ---
