@@ -17,6 +17,7 @@ PRD §9 + URL handling agreement §3.7:
 
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 import json
 import os
@@ -132,6 +133,18 @@ class Cache:
             metadata=meta.get("metadata", {}),
             assets=meta.get("assets", []),
         )
+
+    def cached_at(self, sha: str) -> str | None:
+        """ISO-8601 (UTC) publish time of a cache entry, derived from the
+        entry directory mtime (set by os.replace in write). None if absent.
+        Used by the SSE `cached` event; the cache does not store a separate
+        timestamp in meta.json.
+        """
+        entry = self._entry_dir(sha)
+        if not entry.exists():
+            return None
+        ts = entry.stat().st_mtime
+        return _dt.datetime.fromtimestamp(ts, tz=_dt.UTC).isoformat()
 
     def delete(self, sha: str) -> bool:
         entry = self._entry_dir(sha)

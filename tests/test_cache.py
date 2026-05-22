@@ -218,3 +218,21 @@ def test_cache_purge_ignores_non_entry_files(tmp_cache_dir: Path):
     (tmp_cache_dir / "junk.txt").write_text("ignore me", encoding="utf-8")
     assert cache.purge() == 1
     assert (tmp_cache_dir / "junk.txt").exists()  # purge only removes sha entries
+
+
+def test_cache_cached_at_returns_iso_for_existing_entry(tmp_cache_dir: Path):
+    cache = Cache(tmp_cache_dir)
+    sha = "a" * 64
+    cache.write(sha, ConversionResult(markdown="x"), options={})
+    ts = cache.cached_at(sha)
+    assert ts is not None
+    # ISO-8601 with timezone; parseable and ends in +00:00 or Z
+    from datetime import datetime
+
+    parsed = datetime.fromisoformat(ts)
+    assert parsed.tzinfo is not None
+
+
+def test_cache_cached_at_returns_none_for_missing_entry(tmp_cache_dir: Path):
+    cache = Cache(tmp_cache_dir)
+    assert cache.cached_at("b" * 64) is None
