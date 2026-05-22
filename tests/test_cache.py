@@ -6,6 +6,7 @@ is NOT in the key (handled at the response-metadata level by the service).
 
 import json
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -227,10 +228,9 @@ def test_cache_cached_at_returns_iso_for_existing_entry(tmp_cache_dir: Path):
     ts = cache.cached_at(sha)
     assert ts is not None
     # ISO-8601 with timezone; parseable and ends in +00:00 or Z
-    from datetime import datetime
-
     parsed = datetime.fromisoformat(ts)
     assert parsed.tzinfo is not None
+    assert ts.endswith("+00:00")
 
 
 def test_cache_cached_at_returns_none_for_missing_entry(tmp_cache_dir: Path):
