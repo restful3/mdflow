@@ -13,6 +13,7 @@ def test_protocol_attrs():
     assert conv.formats == ("pptx",)
     assert conv.requires_gpu is False
     assert conv.can_handle(_ctx(b"")) is True
+    assert conv.can_handle(ConversionContext(data=b"", filename_hint=None, format="pdf")) is False
 
 
 def test_pptx_structure(sample_pptx_bytes):

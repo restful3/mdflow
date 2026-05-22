@@ -48,6 +48,8 @@ def _render_slide(slide, index: int) -> str:
     parts: list[str] = [f"## {title}" if title else f"## Slide {index}"]
 
     for shape in slide.shapes:
+        # slide.shapes.title returns a new wrapper each call; compare lxml
+        # elements to reliably skip the title shape regardless of wrapper identity.
         if title_elem is not None and shape.element is title_elem:
             continue
         if shape.has_table:
