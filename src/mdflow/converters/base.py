@@ -32,13 +32,28 @@ class ConversionContext:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ImageAsset:
+    """Content-addressed image extracted by a converter.
+
+    `name` is a sha-based filename (see _image_util.sha_filename). Same
+    image bytes from any source produce the same `name`, enabling disk
+    dedup in the cache's figs/ directory.
+    """
+
+    name: str
+    data: bytes
+    content_type: str
+
+
 @dataclass
 class ConversionResult:
     """Output produced by a converter; cached as-is."""
 
     markdown: str
     metadata: dict[str, Any] = field(default_factory=dict)
-    assets: list[str] = field(default_factory=list)
+    assets: list[str] = field(default_factory=list)  # DEPRECATED, removed in Task 9
+    images: list[ImageAsset] = field(default_factory=list)
 
 
 @runtime_checkable

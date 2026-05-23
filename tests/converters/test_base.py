@@ -1,11 +1,15 @@
 """Converter base — full: ConversionContext, ConversionResult, Converter Protocol."""
 
+from dataclasses import FrozenInstanceError
 from pathlib import Path
+
+import pytest
 
 from mdflow.converters.base import (
     ConversionContext,
     ConversionResult,
     Converter,
+    ImageAsset,
     ProgressCallback,
 )
 
@@ -121,3 +125,27 @@ def test_object_missing_attrs_is_not_converter():
         pass
 
     assert not isinstance(_Bare(), Converter)
+
+
+def test_image_asset_is_frozen_dataclass():
+    a = ImageAsset(name="abc.png", data=b"\x89PNG", content_type="image/png")
+    with pytest.raises(FrozenInstanceError):
+        a.name = "x"  # frozen=True → FrozenInstanceError
+
+
+def test_image_asset_fields():
+    a = ImageAsset(name="x.jpg", data=b"jpegdata", content_type="image/jpeg")
+    assert a.name == "x.jpg"
+    assert a.data == b"jpegdata"
+    assert a.content_type == "image/jpeg"
+
+
+def test_conversion_result_images_default_empty():
+    r = ConversionResult(markdown="x", metadata={})
+    assert r.images == []
+
+
+def test_conversion_result_images_field_accepts_list():
+    a = ImageAsset(name="a.png", data=b"d", content_type="image/png")
+    r = ConversionResult(markdown="x", metadata={}, images=[a])
+    assert r.images == [a]
