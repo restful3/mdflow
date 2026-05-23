@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from mdflow.converters.base import ConversionResult
+from mdflow.converters.base import ConversionResult, ImageAsset
 from mdflow.core.errors import ErrorCode, MdflowError
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -103,6 +103,59 @@ class Cache:
         except OSError as e:
             # Best-effort cleanup of any partial tmp dir before surfacing
             # the standard retryable code (PRD §8.1).
+            if tmp is not None and tmp.exists():
+                shutil.rmtree(tmp, ignore_errors=True)
+            raise MdflowError(
+                ErrorCode.CACHE_IO_ERROR,
+                f"cache entry {sha} unwritable: {e}",
+            ) from e
+
+    def write_canonical(
+        self,
+        sha: str,
+        result: ConversionResult,
+        *,
+        options: dict[str, Any],
+    ) -> None:
+        """Atomic write: result.md + meta.json + figs/<image_name> for each unique ImageAsset.
+
+        Disk write dedupes by ImageAsset.name (sha-based) — same-sha images
+        written once even if the converter passes duplicates.
+
+        Errors: OSError → MdflowError(CACHE_IO_ERROR), tmp dir cleaned up.
+        """
+        entry = self._entry_dir(sha)
+        tmp: Path | None = None
+        try:
+            tmp = Path(tempfile.mkdtemp(prefix=f".tmp-{sha}-", dir=self.root))
+            (tmp / "result.md").write_text(result.markdown, encoding="utf-8")
+            # Dedupe images by name (sha-based) before writing meta + bytes
+            seen: dict[str, ImageAsset] = {}
+            for img in result.images:
+                if img.name not in seen:
+                    seen[img.name] = img
+            unique_images = list(seen.values())
+            meta = {
+                "sha256": sha,
+                "options": options,
+                "metadata": result.metadata,
+                "images": [
+                    {"name": img.name, "content_type": img.content_type}
+                    for img in unique_images
+                ],
+            }
+            (tmp / "meta.json").write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            if unique_images:
+                figs = tmp / "figs"
+                figs.mkdir()
+                for img in unique_images:
+                    (figs / img.name).write_bytes(img.data)
+            if entry.exists():
+                shutil.rmtree(entry)
+            os.replace(tmp, entry)
+        except OSError as e:
             if tmp is not None and tmp.exists():
                 shutil.rmtree(tmp, ignore_errors=True)
             raise MdflowError(
