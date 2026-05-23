@@ -17,6 +17,10 @@ def test_content_type_to_ext_jpeg():
     assert content_type_to_ext("image/jpeg") == "jpg"
 
 
+def test_content_type_to_ext_jpg_alias():
+    assert content_type_to_ext("image/jpg") == "jpg"
+
+
 def test_content_type_to_ext_svg():
     assert content_type_to_ext("image/svg+xml") == "svg"
 
