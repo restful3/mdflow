@@ -184,13 +184,18 @@ class ConversionResult:
 
 ```python
 # 0) 코드 블록(``` ... ```) 내부 영역은 protect — 치환 제외 (fence detect 후 split)
-# 1) 단독 줄 image: ^!\[(.*?)\]\(figs/.+?\)$
+# 1) 단독 줄 image: ^!\[([^\]]*)\]\(figs/[^)]+\)$
 #    - alt 있음 → alt 텍스트만 한 줄
 #    - alt 없음 → 줄 제거
-# 2) 인라인 image: 텍스트 중 !\[(.*?)\]\(figs/.+?\)
+# 2) 인라인 image: 텍스트 중 !\[([^\]]*)\]\(figs/[^)]+\)
 #    - alt 있음 → alt로 치환
 #    - alt 없음 → 빈 문자열로 치환
 # 3) 연속 빈 줄 정리 (3개+ → 2개로)
+#
+# 주의: alt에는 `]`가 허용되지 않는다 (CommonMark 합치). `(.*?)` lazy quantifier는
+# multi-image line(`![a](figs/1.png) and ![b](figs/2.png)`)에서 backtracking으로
+# alt에 인접 ref의 시작 `]`까지 흡수하므로 사용 금지. `[^\]]*` 부정 클래스 고정.
+# alt에 `]`가 필요한 컨버터 케이스는 v1.1 이후 escaping 정책 도입 시 확정.
 ```
 
 #### `views.embed.synthesize(canonical_md, figs_dir) -> str`
