@@ -163,6 +163,52 @@ class Cache:
                 f"cache entry {sha} unwritable: {e}",
             ) from e
 
+    def read_canonical(self, sha: str) -> ConversionResult | None:
+        """Round-trip read. Returns None on cache miss.
+
+        Backward compat: legacy M0-style entries with only `assets` in
+        meta.json and no figs/ dir return ConversionResult(images=[]).
+        """
+        entry = self._entry_dir(sha)
+        result_file = entry / "result.md"
+        meta_file = entry / "meta.json"
+        if not (result_file.exists() and meta_file.exists()):
+            return None
+        try:
+            markdown = result_file.read_text(encoding="utf-8")
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            raise MdflowError(
+                ErrorCode.CACHE_IO_ERROR,
+                f"cache entry {sha} unreadable: {e}",
+            ) from e
+
+        images: list[ImageAsset] = []
+        figs = entry / "figs"
+        for img_meta in meta.get("images", []):
+            name = img_meta["name"]
+            path = figs / name
+            try:
+                data = path.read_bytes()
+            except OSError as e:
+                raise MdflowError(
+                    ErrorCode.CACHE_IO_ERROR,
+                    f"cache image {name} unreadable: {e}",
+                ) from e
+            images.append(
+                ImageAsset(
+                    name=name,
+                    data=data,
+                    content_type=img_meta["content_type"],
+                )
+            )
+
+        return ConversionResult(
+            markdown=markdown,
+            metadata=meta.get("metadata", {}),
+            images=images,
+        )
+
     def read(self, sha: str) -> ConversionResult | None:
         entry = self._entry_dir(sha)
         result_file = entry / "result.md"

@@ -72,3 +72,73 @@ def test_write_canonical_oserror_wrapped_and_tmp_cleaned(cache, tmp_path, monkey
     assert exc.value.code is ErrorCode.CACHE_IO_ERROR
     leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(".tmp-")]
     assert leftovers == []
+
+
+def test_read_canonical_round_trip(cache, tmp_path):
+    sha = "e" * 64
+    img = make_image_asset(b"data", "image/png")
+    r = ConversionResult(
+        markdown=f"![](figs/{img.name})",
+        metadata={"k": "v"},
+        images=[img],
+    )
+    cache.write_canonical(sha, r, options={})
+    got = cache.read_canonical(sha)
+    assert got is not None
+    assert got.markdown == r.markdown
+    assert got.metadata == {"k": "v"}
+    assert len(got.images) == 1
+    assert got.images[0].name == img.name
+    assert got.images[0].data == b"data"
+    assert got.images[0].content_type == "image/png"
+
+
+def test_read_canonical_miss_returns_none(cache):
+    assert cache.read_canonical("f" * 64) is None
+
+
+def test_read_canonical_legacy_no_figs_meta_assets_returns_empty_images(cache, tmp_path):
+    """M0-style entry — meta.json has 'assets' key, no figs/ dir → images=[]."""
+    sha = "1" + "0" * 63
+    entry = tmp_path / sha
+    entry.mkdir()
+    (entry / "result.md").write_text("legacy markdown")
+    (entry / "meta.json").write_text(json.dumps({
+        "sha256": sha,
+        "options": {},
+        "metadata": {"converter": "old"},
+        "assets": [],  # legacy field
+    }))
+    got = cache.read_canonical(sha)
+    assert got is not None
+    assert got.markdown == "legacy markdown"
+    assert got.metadata == {"converter": "old"}
+    assert got.images == []
+
+
+def test_read_canonical_corrupt_meta_raises(cache, tmp_path):
+    sha = "2" + "0" * 63
+    entry = tmp_path / sha
+    entry.mkdir()
+    (entry / "result.md").write_text("x")
+    (entry / "meta.json").write_text("not json {")
+    with pytest.raises(MdflowError) as exc:
+        cache.read_canonical(sha)
+    assert exc.value.code is ErrorCode.CACHE_IO_ERROR
+
+
+def test_read_canonical_missing_image_bytes_raises(cache, tmp_path):
+    sha = "3" + "0" * 63
+    entry = tmp_path / sha
+    entry.mkdir()
+    (entry / "result.md").write_text("![](figs/x.png)")
+    (entry / "meta.json").write_text(json.dumps({
+        "sha256": sha,
+        "options": {},
+        "metadata": {},
+        "images": [{"name": "x.png", "content_type": "image/png"}],
+    }))
+    # figs/x.png is missing
+    with pytest.raises(MdflowError) as exc:
+        cache.read_canonical(sha)
+    assert exc.value.code is ErrorCode.CACHE_IO_ERROR
