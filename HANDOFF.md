@@ -1,90 +1,113 @@
-# 세션 핸드오프 — mdflow M2b(Marker, GPU) 완료, 전 마일스톤 종료
-
-_최종 갱신: 2026-05-23 14:30 KST_
+# 세션 핸드오프 — M6a 완료, Codex round-1 차단 fix 대기
+_최종 갱신: 2026-05-23_
 
 ## 🎯 목표
-mdflow의 마지막 보류 마일스톤 M2b(Marker GPU PDF 컨버터)를 GPU 호스트에서 spec→plan→TDD 구현→Codex 묶음 리뷰→채택→태그 사이클로 완료. M2a가 깐 GPU 라우팅 배관(`gpu_semaphore(1)` + `queued` 이벤트) 위에 실제 GPU 컨버터를 끼우고 검증.
 
-## ✅ 완료 (이번 세션)
+Phase M6 (이미지 지원 v2) 진행. M6a (인프라) 완료 + Codex 단독 묶음 리뷰 round-1 수신. 차단 1건(formatter) + 즉시 권고 2건(image/jpg test, spec template regex) 처리 후 재리뷰 → `===CODEX_FINAL_APPROVAL===` 받으면 채택 + 태그. 그 다음 M6b (PDF 컨버터 이미지 추출) plan 작성.
 
-**M2b까지 모든 변경 원격 동기 완료** — `HEAD == origin/master == 9857393`, 태그 `v0.7.0-m2b` 원격에도 반영. 총 7 마일스톤 태그(`v0.0.1-m0` \~ `v0.7.0-m2b`) 전부 push 됨.
+## ✅ 완료
 
-- **검증 체크포인트** (turn 마지막): `git push origin master && git push origin v0.7.0-m2b` 성공, `git status --short`는 HANDOFF.md만(이 turn에서 곧 덮어씀). 304 passed / 2 skipped, ruff clean.
-- **M2b Marker(GPU) PDF 컨버터 — `v0.7.0-m2b`**
-  - **Plan** `docs/superpowers/plans/2026-05-23-m2b-marker.md` — Task 시퀀스, 설치 핀 노트, MCP/CLI 비범위 명시.
-  - **`[gpu]` extra**(`pyproject.toml`): `marker-pdf>=1.0`, `torch>=2.4`. 설치 실증: `pip install --index-url https://download.pytorch.org/whl/cu124 'torch>=2.4'` + `pip install marker-pdf` + cu124 force-reinstall로 PyPI의 `torch 2.12+cu13`(driver 12.6 부적합) 덮어쓰기 회복.
-  - **`MarkerConverter`** `src/mdflow/converters/marker.py` (a1dcc23 + harden 0756562): `requires_gpu=True`, `formats=("pdf",)`. `can_handle` 세 게이트(`_force_cpu()`/`_cuda_available()`/`_marker_available()`) — round-2에서 `_cuda_available`/`_marker_available`이 broad `Exception` 잡도록 hardening(깨진 torch/marker init 시 raw `INTERNAL` SSE 누출 방지). `convert()`는 lazy import + bytes→임시 PDF→Marker(path) + `text_from_rendered`. `tmp: Path | None = None` 초기화 + `if tmp is not None`로 `NamedTemporaryFile` 실패 시 `UnboundLocalError` 마스킹 방지. PaperFlow VRAM 정리(`del model; gc.collect(); torch.cuda.empty_cache()`)를 outer `finally`에 강제(예외 경로 포함 모든 path에서 실행).
-  - **registry first-wins 등록**(`src/mdflow/runtime/composition.py`): `MarkerConverter`를 `PdfConverter` **앞에** 등록. `build_registry(settings, *, allow_gpu=True)` 매개변수 추가 — `allow_gpu=False`면 MarkerConverter 등록 자체에서 제외.
-  - **autouse `MDFLOW_FORCE_CPU=1`**(`tests/conftest.py`): 전체 테스트 스위트에서 PyMuPDF 경로 결정성 유지. 실 GPU smoke만 `monkeypatch.delenv` opt-out. fake-GPU 컨버터 테스트는 직접 app registry 주입이라 영향 없음.
-  - **실 GPU 검증**: RTX 3060 12GB + driver 12.6 + torch 2.6.0+cu124 + marker-pdf 1.10.2 — `test_marker_real_gpu_smoke` 7초에 fixture PDF에서 "Document Title" 추출, `test_convert_sse_routes_pdf_through_marker_when_gpu_enabled`로 SSE `started.converter="pdf-marker"`+`gpu=True` 통합 검증.
-  - **Codex 1라운드 차단 1건 → FIXED**: HTTP-mounted MCP가 같은 FastAPI 프로세스에서 `gpu_semaphore` 우회 가능(M4 시점엔 GPU 컨버터 없어 권고, M2b가 Marker를 들이면서 VRAM 1-모델-1-프로세스 위반으로 승격). `build_mcp(allow_gpu=False)` + `build_registry(allow_gpu=False)` — M4 `allow_path=False` 패턴 동형. stdio MCP는 별도 프로세스라 GPU opt-in 유지. CLI는 별도 프로세스로 in-process semaphore 공유 불가 — 사용자 결정으로 `docs/test-matrix.md` "GPU 동시 실행 정책"에 "서버와 CLI GPU 변환 동시 실행 금지" 명시(`--gpu` opt-in은 후속).
-  - **Codex 권고 1·2·3·4 전부 반영**: (1) broad Exception, (2) tempfile masking, (3) GPU install 운영 문서(cu124 force-reinstall + 동시 실행 정책 섹션), (4) SSE marker routing 통합 테스트(`@pytest.mark.gpu`).
-  - **Codex 재리뷰 (round-2)**: 첫 줄 정확히 `===CODEX_FINAL_APPROVAL===` 수신(round2 파일 미생성 = M1a/M4 패턴 — 승인이라 정상). **잔존 차단 0건**.
-
-**테스트/린트**: 287 → **304 passed / 2 skipped**(신규 17개: marker unit 10 + 실 GPU smoke 1 + composition 2 + harden 회귀 3(broken torch, broken marker, tempfile masking) + SSE marker routing 1). 2 skip = hwp 실제 fixture 부재 + url redirect step5. ruff clean.
+- **M6a 9 task subagent-driven 실행 완료** (각 task에 implementer + spec compliance reviewer + code quality reviewer, 모두 ✅ approved). 9 commits `1489ab0..cbece1b`.
+- 352 passed / 2 skipped (304 pre-M6a + 49 신규 − 1 제거된 assets test), `ruff check` clean
+- PROCESS_STATE.md §4 로드맵에 Phase M6 IN PROGRESS 추가, 헤더에 M6a 완료 기록 (`fee7eae`)
+- 모든 commits push 완료 (`origin/master`까지 sync)
+- Codex round-1 리뷰 수신 — `docs/reviews/2026-05-23-m6a-image-infrastructure-codex.md` (14.6K)
 
 ## 🔄 진행 중
-없음. M2b 슬라이스가 종료되어 mdflow v1의 모든 합의된 마일스톤(M0\~M5 + M2b)이 채택됨.
+
+- **Codex round-1 결과 처리 단계**. Codex 판정: "차단 1건(formatter) 처리 후 채택. 권고는 M6b/M6e 전 보강하면 충분".
+- 사용자에게 다음 조치 계획 제시했고("차단 1 + 권고 2 즉시 처리 후 재리뷰") 대답 대기 중이었음. 사용자가 "세션 클리어 준비" 요청.
 
 ## ⏭️ 다음 단계
-사용자 결정 필요. 가능한 후속 작업(전부 non-blocking, PROCESS_STATE §8/§11에 기록됨):
 
-1. **GPU Docker 이미지 분기** — 현재는 CPU 단일 이미지(M5 산출). NVIDIA CUDA base + `.[gpu]` + cu124 torch force-reinstall로 별도 태그(예: `mdflow:0.7.0-gpu`). marker 모델 사전 다운로드 여부 결정 필요.
-2. **CLI `--gpu` opt-in 플래그** — 현재는 `MDFLOW_FORCE_CPU=1` autouse가 CLI 호출 시 영향을 주지 않으니 운영자가 `MDFLOW_FORCE_CPU=0`로 호출하면 GPU 사용 가능. 명시적 `--gpu` 플래그 + 서버-CLI 간 GPU lockfile 등 동시 실행 방지 메커니즘.
-3. **MCP `gpu_semaphore` 공유 주입** — 현재는 HTTP 마운트 MCP에 `allow_gpu=False`로 차단해 문제 회피. 운영상 MCP에서도 GPU가 필요해지면 pool/semaphore를 MCP runtime에 공유 주입 + `_run`/tool에서 SSE와 동형으로 lookup→`requires_gpu` 분기 필요.
-4. **M5 DEFER 후속 hardening** — MCP `_run`의 default executor → bounded pool, MCP `convert_file(path)`/`get_cached` cache.read를 executor로 오프로드.
-5. **README 신설** — 없음. `[hwp]` AGPL 노트와 `[gpu]` cu124 install 절차를 묶어 정리할 수 있음.
+새 세션에서 이어받을 순서:
+
+1. **Codex 응답 파일 commit**: `docs/reviews/2026-05-23-m6a-image-infrastructure-codex.md` (현재 untracked).
+   ```bash
+   git add docs/reviews/2026-05-23-m6a-image-infrastructure-codex.md
+   git commit -m "docs(reviews): M6a Codex round-1 review (block 1 + rec 6 + memo 6)"
+   ```
+2. **차단 1 처리** — `.venv/bin/ruff format src tests` 실행. 4 파일 재포맷됨: `src/mdflow/core/cache.py`, `src/mdflow/views/zip.py`, `tests/converters/test_image_util.py`, `tests/test_cache_canonical.py`. 검증: `.venv/bin/ruff check src tests && .venv/bin/ruff format --check src tests && .venv/bin/pytest -q` 모두 clean + 352 passed. commit:
+   ```bash
+   git commit -am "fix(m6a): apply ruff format (Codex round-1 blocking)"
+   ```
+3. **권고 5 처리** — `tests/converters/test_image_util.py`에 한 줄 test 추가:
+   ```python
+   def test_content_type_to_ext_jpg_alias():
+       assert content_type_to_ext("image/jpg") == "jpg"
+   ```
+   commit: `test(m6a): add image/jpg alias lookup test (Codex round-1 rec 5)`
+4. **권고 4 부분 처리** — `docs/specs/2026-05-23-m6-image-support-design.md` §5.3 의사코드의 regex `\[(.*?)\]` 두 곳 (views.none `_STANDALONE`/`_INLINE`, views.embed `_REF`) 을 `\[([^\]]*)\]` 로 패치. spec에 한 줄 추가: "alt 안에는 `]` 가 허용되지 않는다 (CommonMark 합치) — alt에 `]`가 필요한 컨버터 케이스는 v1.1 이후 escaping 정책 도입 시 확정". commit: `docs(specs): fix M6 alt regex template ((.*?) → [^\]]*) per Codex round-1 rec 4`
+5. **Codex round-2 재리뷰 송부** — `docs/reviews/2026-05-23-m6a-image-infrastructure-codex-2.md`. 메시지에 포함할 것: 차단 1 fix commit hash, rec 5 commit hash, rec 4 spec patch commit hash, "더 이상 수정할 게 없다면 응답 첫 줄에 정확히 `===CODEX_FINAL_APPROVAL===` 한 줄만". 이전 M1a/M4/M2b 재리뷰 패턴과 동일.
+6. **재리뷰 결과 처리** — `===CODEX_FINAL_APPROVAL===` 수신 시 M6a 채택:
+   - 태그: `v0.8.0-m6a` (M3b의 `v0.4.0-m3b`, M4의 `v0.5.0-m4` 패턴 따라). 사용자 결정 가능.
+   - PROCESS_STATE.md 갱신 (M6a 채택, round-2 final approval, 태그 명시)
+   - push
+7. **M6b plan 작성** — `superpowers:writing-plans` 스킬 호출. 범위: `pdf-pymupdf4llm` + `pdf-marker` 두 컨버터에 이미지 추출 활성화. Plan에 Codex round-1 권고 1·2 **반드시 통합** (M6b 시작 직전 처리 → 컨버터가 실제 image-bearing cache를 만들기 전 보강):
+   - **권고 1**: `Cache.read`에서 malformed `meta["images"]` schema (list 아닌 경우, dict 아닌 element, `name`/`content_type` str 아닌 경우) → `MdflowError(CACHE_IO_ERROR)`로 wrap
+   - **권고 2**: `Cache.write`에서 `img.name == Path(img.name).name` (path traversal 차단) 검증. 또는 `ImageAsset.name` 생성을 헬퍼로 사실상 고정하고 컨버터 구현 규칙에 명시
+8. **M6b 실행** — subagent-driven 진행 (M6a 패턴 일관)
 
 ## 🧠 대화에만 있던 핵심 컨텍스트
 
-모든 결정 근거는 commit·spec·`docs/reviews/`·`PROCESS_STATE.md`에 영구 저장됨. 메타-수준 요점만:
+### Codex round-1 분류 (재리뷰 송부 시 참고)
 
-- **M2b 설치 함정의 정확한 형태** — `marker-pdf 1.10.2`가 `torch>=2.7`을 요구 + PyPI 기본 resolver는 `torch 2.12.0`(CUDA 13 wheel)을 가져옴 → 이 호스트 driver 12.6은 CUDA 12.x까지만 지원 → `torch.cuda.is_available()`이 `"NVIDIA driver too old"` 경고 후 false 처리. 우회: `--index-url https://download.pytorch.org/whl/cu124 --force-reinstall 'torch==2.6.0+cu124'`. pip resolver는 `marker-pdf 1.10.2 requires torch<3.0.0,>=2.7.0, but you have torch 2.6.0+cu124` 경고를 띄우지만 **실제 import + RTX 3060 inference는 통과**(7s, fixture PDF에서 "Document Title" 추출). marker 안정 채널이 driver를 따라잡거나 호스트 driver를 12.8+로 업그레이드할 때까지 핀 유지. 운영자에게 알려야 함 — `docs/test-matrix.md` "GPU install (M2b)" 섹션에 절차 + 경고 의미 명시.
-- **`allow_gpu=False` 결정 근거** — Codex 차단 1의 hotfix 옵션 두 가지(① pool/semaphore 공유 주입, ② MCP에서 GPU 명시거부) 중 ②를 선택. M4의 `allow_path=False` 패턴이 이미 정착돼 있어 동형으로 일관, 5\~10줄 변경으로 끝. 운영에서 MCP가 GPU 필요해지면 ①로 확장(별도 슬라이스). stdio MCP는 별도 프로세스라 SSE와 충돌 없어 GPU opt-in 유지.
-- **autouse `MDFLOW_FORCE_CPU=1` 필요 이유** — MarkerConverter를 `PdfConverter` 앞에 등록하면 GPU+marker 있는 호스트에서 모든 PDF 테스트가 Marker로 라우팅(모델 다운로드 + 느린 inference로 깨짐). 실 GPU 분기를 검증하는 테스트만 `monkeypatch.delenv`로 opt-out하는 게 가장 단순한 결정성 유지 방식. fake-GPU 컨버터 테스트(test_convert.py:299/377/416)는 직접 `app.state.registry`를 swap하므로 이 env-gate와 무관.
-- **Codex round-2 승인의 형태** — round2 파일이 *생성되지 않는* 것이 승인이다(M1a, M4도 동일 패턴). 첫 줄에 정확히 `===CODEX_FINAL_APPROVAL===`만 출력하면 본문 없이 잔존 차단 0을 의미. round2 파일이 만들어졌다면 추가 차단/권고가 있다는 신호.
-- **CLI GPU 동시 실행은 코드로 못 막음** — CLI(`mdflow convert`)는 별도 프로세스에서 `ConversionService.convert` 직접 호출 → 서버 lifespan의 in-process `gpu_semaphore`를 거치지 않는다. 운영 정책으로 "서버와 CLI GPU 변환 동시 실행 금지"를 문서화하는 게 v1 시점의 합리적 선택(사용자 결정). 코드 강제는 OS-level lockfile이나 GPU device reservation이 필요해 별도 슬라이스.
-- **Marker API 형태** — `marker.models.create_model_dict()`로 model dict 로드 → `marker.converters.pdf.PdfConverter(artifact_dict=models)(str(path))`로 변환 → `marker.output.text_from_rendered(rendered)`로 `(text, _, images)` 추출. path 입력만 가능(bytes 직접 입력 안 됨) → tempfile 경유. 첫 호출 시 surya-ocr 모델 다운로드(~수백 MB, HF 캐시), 이후엔 캐시 사용해 빠름(이 호스트 모델 캐시는 이미 있어서 7s).
+- **차단 1**: `ruff format --check` 4 파일 실패 — 우리가 `ruff check`만 확인하고 `format --check`는 안 했음. milestone 채택 조건 "ruff clean"에 format check 포함된다는 invariant 확인됨.
+- **권고 1 (M6b 직전)**: `Cache.read`의 schema validation gap — `img_meta["name"]` 등 raw KeyError 가능
+- **권고 2 (M6b 직전)**: `ImageAsset.name` path safety — `../x.png` 같은 name이 컨버터에서 들어오면 figs/ 탈출
+- **권고 3 (M6e)**: `options.images` cache-key 제외 — `compute_cache_key` 내부 또는 `canonical_cache_options(options)` 같은 단일 helper 중앙화. **위치**: `src/mdflow/core/cache.py:38` `compute_cache_key`, `src/mdflow/core/service.py:76`이 호출. M6e가 handler에서 `images`를 options에 넣기 시작하기 전에 처리.
+- **권고 4 (즉시 — spec doc + plan template)**: spec의 view synthesis 의사코드 regex가 `(.*?)`로 적혀있음 → `[^\]]*`로 패치 필요. 그렇지 않으면 M6b\~M6d implementer가 같은 backtracking 버그를 다시 만남.
+- **권고 5 (즉시)**: `test_content_type_to_ext_jpg_alias` 한 줄 추가
+- **권고 6 (M6f PRD 패치)**: code fence 보호의 제한 ("4+ space indented fence도 fence로 본다 / `~~~` fence 미보호") spec에 명시
+
+### 발견 (디버깅·실험에서 알아낸 것)
+
+- **regex `(.*?)` backtracking bug**: Task 6 implementer가 multi-image line(`![a](figs/1.png) and ![b](figs/2.png)`)에서 `_STANDALONE.fullmatch()`가 잘못 매칭함을 발견. `[^\]]*` (alt cannot contain `]` per CommonMark)로 fix. Task 7도 같은 fix 자동 적용. Spec template은 미패치 → 다음 단계 4번에서 처리.
+- **Cache.read post-rename stats semantics**: Codex memo 3에서 PASS 확인. miss는 absent entry만, hit은 성공만, corruption은 어느 카운터도 안 건드림.
+- **legacy M0 entry 호환**: Codex memo 4에서 PASS — `meta.get("images", [])` 덕분에 `assets`만 있는 old meta.json도 `images=[]`로 round-trip.
+- **5 transport 라이브 e2e (이전 세션)**: HTTP + MCP stdio + MCP HTTP + GPU(Marker) + CLI 모두 그린. PROCESS_STATE 헤더에 기록됨.
+
+### 결정 (왜)
+
+- **subagent-driven 패턴 success**: 각 task에 implementer + spec reviewer + code quality reviewer = 3 subagent. 메인 컨텍스트 보호 + TDD discipline 자동. M6b\~M6f도 같은 패턴 유지.
+- **`ConversionResult.assets` 즉시 제거 vs shim**: 우리 선택 = dataclass에서 제거 + JSON 응답(`Done.assets`, admin route) 에서 `"assets":[]` shim 유지. v2.0 major니까 정당한 breaking. Codex memo 1에서 동의.
+- **Cache.write/read rename (canonical → 기본)**: 두 method를 하나로 통일. `build_bundle`은 별개. Codex memo 6에서 commit 분해 합리 판정.
+- **5 transport 검증 끝남 → 인프라 강화 (M6)**: M0\~M5 채택 후 사용자가 "프로젝트 전면 수정"으로 이미지 지원 명시. spec §3 D1\~D9 합의된 결정.
+
+### 배제 (시도했지만 안 된 것 / 안 하기로 한 것)
+
+- **HTML 외부 URL 이미지 fetch**: 옵션 4 (data URI는 figs/, 외부 URL은 markdown ref 그대로 두기) 채택. v1 SSRF surface 확장 회피. v1.1에서 `options.html_fetch_images=true` 옵션 추가 가능.
+- **HWP 이미지 추출**: pyhwp가 bindata 추출 안 함. M6d에서 `metadata.image_drop_count` 카운터만 세팅 (사용자에게 "원래 이미지 N개 있었지만 컨버터 한계로 드롭" 신호).
+- **권고 1·2를 M6a 안에서 즉시 처리**: 안 함. Codex도 "M6b 시작 전 처리 권장"이라 명시. 실제 컨버터가 image-bearing cache를 만들기 시작할 때 보강이 자연스러움.
 
 ## ⚠️ 클리어 전 주의
 
-- **커밋 안 됨**: 이 turn에서 갱신되는 `HANDOFF.md` 외 없음. `git status --short`는 `HANDOFF.md` 한 줄(다음 commit이 흡수하거나 다음 세션이 다시 덮어씀).
-- **미푸시 커밋**: 없음. `HEAD == origin/master == 9857393`. M2b 4개 commit + 태그 `v0.7.0-m2b` 모두 원격 반영 완료.
-- **백그라운드**: 폴링 task 2건은 모두 종료. 단, **`md:codex` tmux 윈도우의 codex CLI는 계속 실행 중**(Context 77% used, 5h 99% / weekly 87% — 모두 여유). 다음 세션에서 Codex 리뷰가 필요하면 그대로 재사용 가능. Codex context를 `/clear`하려면 handout-then-clear 절차 필수(codex-peer-reviewer skill Step 8 참조).
-- **미완료 todo**: 없음. M2b 슬라이스 task 12개 전부 completed.
-- **`.agent_io/` 처리**: `.git/info/exclude`로 의도적 git 제외(orchestration runtime). 커밋 대상 아님.
+- **커밋 안 됨**: `docs/reviews/2026-05-23-m6a-image-infrastructure-codex.md` 1 untracked. **다음 단계 1**에서 commit하면 됨. 사용자가 미리 commit 하려면 `git add ... && git commit -m "docs(reviews): M6a Codex round-1 review"`.
+- **백그라운드**: 없음.
+  - 이 conversation에서 시작한 모든 `uvicorn` 인스턴스는 `pkill`로 종료 확인.
+  - `poll_codex.sh` background poll은 completed.
+  - tmux `md:codex` 윈도우는 살아있음 (Codex `--yolo` 프로세스) — 정상. 다음 세션에서 재리뷰 송부 시 그대로 사용.
+- **미완료 todo**: 없음. 모든 TaskCreate items (#1\~#14) completed. 새 세션에서는 새로 만들면 됨.
+- **Codex context**: Codex 측 컨텍스트는 round-1 답변 직후 그대로. Footer는 `Context 14% used · 5h 100% · weekly 86%` — 헤드룸 충분. 재리뷰 시 round-1 응답 파일 경로를 메시지에 포함하면 됨 (skill의 Iteration Pattern Round 2 패턴).
 
 ## 📂 관련 파일
 
-상태 정본:
-- `PROCESS_STATE.md` — §2 한눈에 보기 / §4 로드맵 / §8 M2 (M2a + M2b 둘 다 채택) 갱신 완료. 다음 세션 첫 읽기 대상.
+- `PROCESS_STATE.md` — 헤더 "최종 갱신"에 M6a 완료 기록 (`fee7eae`). §4 로드맵에 Phase M6 IN PROGRESS. 새 세션의 정본 상태 문서.
+- `docs/specs/2026-05-23-m6-image-support-design.md` — M6 전체 binding spec (630줄, 12 섹션, D1\~D9). **권고 4에서 §5.3 regex 패치 필요**.
+- `docs/superpowers/plans/2026-05-23-m6a-image-infrastructure.md` — M6a 9 task TDD plan (1489줄). 향후 M6b/c/d/e/f 별도 plan 파일.
+- `docs/reviews/2026-05-23-m6a-image-infrastructure-codex.md` — Codex round-1 (untracked, 14.6K). **commit 필요**.
+- `src/mdflow/converters/base.py` — `ImageAsset` frozen dataclass + `ConversionResult.images`. `assets` field 제거됨.
+- `src/mdflow/converters/_image_util.py` — `sha_filename`, `make_image_asset`, `canonical_ref`, `EXT_BY_CT`, `content_type_to_ext`. M6b\~M6d 컨버터들이 import할 헬퍼.
+- `src/mdflow/core/cache.py` — `write`/`read` (canonical, rename 완료), `build_bundle` (lazy ZIP_STORED). 권고 1·2 보강 후보 위치.
+- `src/mdflow/views/{none,embed,zip}.py` — 3 view synthesizer. `[^\]]*` regex 적용 완료. M6e가 transport handler에서 호출.
+- `src/mdflow/api/{convert.py,admin.py}` — JSON 응답에 `"assets":[]` shim 유지.
+- `src/mdflow/core/service.py` — `images=result.images` 전파.
+- `src/mdflow/core/events.py` — `Done.assets: list[str]` SSE shim **미변경** (M6 동안 유지).
+- `tests/converters/test_image_util.py` — **권고 5 처리 위치** (`test_content_type_to_ext_jpg_alias` 추가).
+- `tests/test_cache_canonical.py`, `tests/views/test_{none,embed,zip}.py`, `tests/converters/test_base.py`, `tests/test_cache.py` — M6a 신규/마이그레이션된 테스트들.
 
-이번 세션 산출(신규):
-- `docs/superpowers/plans/2026-05-23-m2b-marker.md` — M2b plan
-- `docs/reviews/2026-05-23-m2b-marker-codex.md` — Codex round-1 review (차단 1 + 권고 4 + 메모 8)
-- `src/mdflow/converters/marker.py` — MarkerConverter
+## 🔁 재시작 메시지 (다음 세션에 복사)
 
-이번 세션 산출(갱신):
-- `pyproject.toml` — `[gpu]` extra
-- `src/mdflow/runtime/composition.py` — MarkerConverter 등록 + `allow_gpu` 매개변수
-- `src/mdflow/mcp/server.py` — `build_mcp(*, allow_gpu)` 매개변수
-- `src/mdflow/api/app.py` — `build_mcp(allow_path=False, allow_gpu=False)` 마운트
-- `tests/conftest.py` — `requires_gpu_runtime` skip 마커 + autouse `MDFLOW_FORCE_CPU=1`
-- `tests/converters/test_marker.py` — 14 단위 테스트(게이팅·VRAM cleanup·broken-torch/marker·tempfile masking) + 1 실 GPU smoke
-- `tests/test_composition.py` — Marker 등록 순서 assert + `allow_gpu=False` 회귀
-- `tests/api/test_convert.py` — SSE marker routing 통합(`@pytest.mark.gpu`)
-- `docs/test-matrix.md` — pdf-marker 행 COVERED + "GPU install (M2b)" + "GPU 동시 실행 정책" 섹션
-- `PROCESS_STATE.md` — §8 M2b 체크박스/최종 갱신 시각
-
-핵심 진입점(변경 없음):
-- HTTP: `mdflow.api.app:create_app`
-- stdio MCP: `mdflow-mcp` = `mdflow.mcp.server:main`
-- CLI: `mdflow` = `mdflow.cli:app` (convert, serve)
-
-M2b 커밋 시퀀스:
 ```
-9857393 docs(state): M2b adopted — Codex round-2 final approval
-0756562 fix(m2b-harden): block GPU converters in HTTP-mounted MCP + Codex hardening
-7219962 docs(m2b): plan + state + test-matrix for Marker integration
-a1dcc23 feat(m2b): MarkerConverter (GPU PDF) with first-wins registry gating
+/media/restful3/data/workspace/mdflow/HANDOFF.md 를 읽고, "⚠️ 클리어 전 주의"를 먼저 확인한 뒤 "⏭️ 다음 단계"부터 이어서 작업해줘.
 ```
