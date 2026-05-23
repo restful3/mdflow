@@ -18,7 +18,7 @@ def cache(tmp_path: Path) -> Cache:
 def test_write_canonical_no_images_creates_md_and_meta(cache, tmp_path):
     sha = "a" * 64
     r = ConversionResult(markdown="hello", metadata={"x": 1}, images=[])
-    cache.write_canonical(sha, r, options={})
+    cache.write(sha, r, options={})
     entry = tmp_path / sha
     assert (entry / "result.md").read_text() == "hello"
     meta = json.loads((entry / "meta.json").read_text())
@@ -37,7 +37,7 @@ def test_write_canonical_with_images_creates_figs(cache, tmp_path):
         metadata={},
         images=[img1, img2],
     )
-    cache.write_canonical(sha, r, options={})
+    cache.write(sha, r, options={})
     figs = tmp_path / sha / "figs"
     assert figs.is_dir()
     assert (figs / img1.name).read_bytes() == b"png-1"
@@ -57,7 +57,7 @@ def test_write_canonical_dedupes_same_sha(cache, tmp_path):
         metadata={},
         images=[img, img],
     )
-    cache.write_canonical(sha, r, options={})
+    cache.write(sha, r, options={})
     figs = tmp_path / sha / "figs"
     assert len(list(figs.iterdir())) == 1
 
@@ -69,7 +69,7 @@ def test_write_canonical_oserror_wrapped_and_tmp_cleaned(cache, tmp_path, monkey
     sha = "d" * 64
     r = ConversionResult(markdown="x", metadata={}, images=[])
     with pytest.raises(MdflowError) as exc:
-        cache.write_canonical(sha, r, options={})
+        cache.write(sha, r, options={})
     assert exc.value.code is ErrorCode.CACHE_IO_ERROR
     leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(".tmp-")]
     assert leftovers == []
@@ -83,8 +83,8 @@ def test_read_canonical_round_trip(cache, tmp_path):
         metadata={"k": "v"},
         images=[img],
     )
-    cache.write_canonical(sha, r, options={})
-    got = cache.read_canonical(sha)
+    cache.write(sha, r, options={})
+    got = cache.read(sha)
     assert got is not None
     assert got.markdown == r.markdown
     assert got.metadata == {"k": "v"}
@@ -95,7 +95,7 @@ def test_read_canonical_round_trip(cache, tmp_path):
 
 
 def test_read_canonical_miss_returns_none(cache):
-    assert cache.read_canonical("f" * 64) is None
+    assert cache.read("f" * 64) is None
 
 
 def test_read_canonical_legacy_no_figs_meta_assets_returns_empty_images(cache, tmp_path):
@@ -110,7 +110,7 @@ def test_read_canonical_legacy_no_figs_meta_assets_returns_empty_images(cache, t
         "metadata": {"converter": "old"},
         "assets": [],  # legacy field
     }))
-    got = cache.read_canonical(sha)
+    got = cache.read(sha)
     assert got is not None
     assert got.markdown == "legacy markdown"
     assert got.metadata == {"converter": "old"}
@@ -124,7 +124,7 @@ def test_read_canonical_corrupt_meta_raises(cache, tmp_path):
     (entry / "result.md").write_text("x")
     (entry / "meta.json").write_text("not json {")
     with pytest.raises(MdflowError) as exc:
-        cache.read_canonical(sha)
+        cache.read(sha)
     assert exc.value.code is ErrorCode.CACHE_IO_ERROR
 
 
@@ -141,7 +141,7 @@ def test_read_canonical_missing_image_bytes_raises(cache, tmp_path):
     }))
     # figs/x.png is missing
     with pytest.raises(MdflowError) as exc:
-        cache.read_canonical(sha)
+        cache.read(sha)
     assert exc.value.code is ErrorCode.CACHE_IO_ERROR
 
 
@@ -153,7 +153,7 @@ def test_build_bundle_with_images_creates_zip(cache, tmp_path):
         metadata={"x": 1},
         images=[img],
     )
-    cache.write_canonical(sha, r, options={})
+    cache.write(sha, r, options={})
     bundle = cache.build_bundle(sha)
     assert bundle is not None
     assert bundle.exists()
@@ -170,7 +170,7 @@ def test_build_bundle_with_images_creates_zip(cache, tmp_path):
 def test_build_bundle_no_images_returns_none(cache, tmp_path):
     sha = "5" + "0" * 63
     r = ConversionResult(markdown="plain", metadata={}, images=[])
-    cache.write_canonical(sha, r, options={})
+    cache.write(sha, r, options={})
     assert cache.build_bundle(sha) is None
 
 
@@ -178,7 +178,7 @@ def test_build_bundle_idempotent_does_not_rebuild(cache, tmp_path):
     sha = "6" + "0" * 63
     img = make_image_asset(b"x", "image/png")
     r = ConversionResult(markdown=f"![](figs/{img.name})", metadata={}, images=[img])
-    cache.write_canonical(sha, r, options={})
+    cache.write(sha, r, options={})
     first = cache.build_bundle(sha)
     assert first is not None
     mtime1 = first.stat().st_mtime_ns
@@ -197,7 +197,7 @@ def test_build_bundle_uses_stored_compression(cache, tmp_path):
     sha = "8" + "0" * 63
     img = make_image_asset(b"compressible-bytes" * 100, "image/png")
     r = ConversionResult(markdown=f"![](figs/{img.name})", metadata={}, images=[img])
-    cache.write_canonical(sha, r, options={})
+    cache.write(sha, r, options={})
     bundle = cache.build_bundle(sha)
     with zipfile.ZipFile(bundle) as zf:
         info = zf.getinfo(f"figs/{img.name}")

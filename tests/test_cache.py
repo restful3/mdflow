@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from mdflow.converters._image_util import make_image_asset
 from mdflow.converters.base import ConversionResult
 from mdflow.core.cache import Cache, compute_cache_key
 
@@ -44,14 +45,20 @@ def test_compute_cache_key_changes_with_detected_format():
 def test_cache_write_then_read(tmp_cache_dir: Path):
     cache = Cache(tmp_cache_dir)
     sha = "a" * 64
-    res = ConversionResult(markdown="# x", metadata={"converter": "text"}, assets=["asset1.png"])
+    img = make_image_asset(b"png-bytes", "image/png")
+    res = ConversionResult(
+        markdown=f"![](figs/{img.name})",
+        metadata={"converter": "text"},
+        images=[img],
+    )
     cache.write(sha, res, options={"k": 1})
 
     got = cache.read(sha)
     assert got is not None
-    assert got.markdown == "# x"
+    assert got.markdown == res.markdown
     assert got.metadata["converter"] == "text"
-    assert got.assets == ["asset1.png"]
+    assert len(got.images) == 1
+    assert got.images[0].data == b"png-bytes"
 
 
 def test_cache_read_miss_returns_none(tmp_cache_dir: Path):

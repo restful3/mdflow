@@ -74,44 +74,7 @@ class Cache:
         _validate_sha(sha)
         return self.root / sha
 
-    def write(self, sha: str, result: ConversionResult, options: dict[str, Any]) -> None:
-        entry = self._entry_dir(sha)
-        # mkdtemp() gives every writer a unique tmp dir under self.root, so
-        # two concurrent writes against the same sha can't clobber a shared
-        # `.tmp-{sha}` path. Publish (rmtree+os.replace) is still a two-step
-        # operation, so a concurrent same-sha writer can still race at the
-        # destination; under contention one writer succeeds and the other
-        # surfaces CACHE_IO_ERROR. This is acceptable for M0 (sequential
-        # API path; identical keys → identical converter output → next
-        # request is a cache hit). Stronger publish atomicity is deferred
-        # to M1+ (per-sha lock or first-writer-wins semantics change).
-        tmp: Path | None = None
-        try:
-            tmp = Path(tempfile.mkdtemp(prefix=f".tmp-{sha}-", dir=self.root))
-            (tmp / "result.md").write_text(result.markdown, encoding="utf-8")
-            meta = {
-                "sha256": sha,
-                "options": options,
-                "metadata": result.metadata,
-                "assets": result.assets,
-            }
-            (tmp / "meta.json").write_text(
-                json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            if entry.exists():
-                shutil.rmtree(entry)
-            os.replace(tmp, entry)
-        except OSError as e:
-            # Best-effort cleanup of any partial tmp dir before surfacing
-            # the standard retryable code (PRD §8.1).
-            if tmp is not None and tmp.exists():
-                shutil.rmtree(tmp, ignore_errors=True)
-            raise MdflowError(
-                ErrorCode.CACHE_IO_ERROR,
-                f"cache entry {sha} unwritable: {e}",
-            ) from e
-
-    def write_canonical(
+    def write(
         self,
         sha: str,
         result: ConversionResult,
@@ -122,6 +85,16 @@ class Cache:
 
         Disk write dedupes by ImageAsset.name (sha-based) — same-sha images
         written once even if the converter passes duplicates.
+
+        mkdtemp() gives every writer a unique tmp dir under self.root, so
+        two concurrent writes against the same sha can't clobber a shared
+        `.tmp-{sha}` path. Publish (rmtree+os.replace) is still a two-step
+        operation, so a concurrent same-sha writer can still race at the
+        destination; under contention one writer succeeds and the other
+        surfaces CACHE_IO_ERROR. This is acceptable for M0 (sequential
+        API path; identical keys → identical converter output → next
+        request is a cache hit). Stronger publish atomicity is deferred
+        to M1+ (per-sha lock or first-writer-wins semantics change).
 
         Errors: OSError → MdflowError(CACHE_IO_ERROR), tmp dir cleaned up.
         """
@@ -164,16 +137,21 @@ class Cache:
                 f"cache entry {sha} unwritable: {e}",
             ) from e
 
-    def read_canonical(self, sha: str) -> ConversionResult | None:
+    def read(self, sha: str) -> ConversionResult | None:
         """Round-trip read. Returns None on cache miss.
 
         Backward compat: legacy M0-style entries with only `assets` in
         meta.json and no figs/ dir return ConversionResult(images=[]).
+
+        Stats: increments miss_count on absent entry, hit_count on success.
+        Corruption (OSError/JSONDecodeError) raises CACHE_IO_ERROR without
+        touching miss_count (matches pre-rename semantics).
         """
         entry = self._entry_dir(sha)
         result_file = entry / "result.md"
         meta_file = entry / "meta.json"
         if not (result_file.exists() and meta_file.exists()):
+            self._stats.miss_count += 1
             return None
         try:
             markdown = result_file.read_text(encoding="utf-8")
@@ -204,6 +182,7 @@ class Cache:
                 )
             )
 
+        self._stats.hit_count += 1
         return ConversionResult(
             markdown=markdown,
             metadata=meta.get("metadata", {}),
@@ -251,30 +230,6 @@ class Cache:
                 f"bundle build for {sha} failed: {e}",
             ) from e
 
-    def read(self, sha: str) -> ConversionResult | None:
-        entry = self._entry_dir(sha)
-        result_file = entry / "result.md"
-        meta_file = entry / "meta.json"
-        if not (result_file.exists() and meta_file.exists()):
-            self._stats.miss_count += 1
-            return None
-        # Disk I/O or a corrupted meta.json must surface as the standard
-        # retryable code (PRD §8.1) — never a raw OSError or JSONDecodeError.
-        try:
-            markdown = result_file.read_text(encoding="utf-8")
-            meta = json.loads(meta_file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
-            raise MdflowError(
-                ErrorCode.CACHE_IO_ERROR,
-                f"cache entry {sha} unreadable: {e}",
-            ) from e
-        self._stats.hit_count += 1
-        return ConversionResult(
-            markdown=markdown,
-            metadata=meta.get("metadata", {}),
-            assets=meta.get("assets", []),
-        )
-
     def cached_at(self, sha: str) -> str | None:
         """ISO-8601 (UTC) publish time of a cache entry, derived from the
         entry directory mtime (set by os.replace in write). None if absent.
@@ -311,3 +266,8 @@ class Cache:
             "hit_count": self._stats.hit_count,
             "miss_count": self._stats.miss_count,
         }
+
+    # ---------------------------------------------------------------------------
+    # Removed in Task 9: old write (assets-based) and old read (assets-based)
+    # Removed in Task 9: write_canonical / read_canonical (renamed to write / read)
+    # ---------------------------------------------------------------------------

@@ -53,7 +53,7 @@ def register_admin_routes(app: FastAPI) -> None:
         return {
             "markdown": entry.markdown,
             "metadata": entry.metadata,
-            "assets": entry.assets,
+            "assets": [],
         }
 
     @app.delete("/cache/{sha256}")

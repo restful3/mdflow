@@ -133,7 +133,7 @@ class ConversionService:
         result = ConversionResult(
             markdown=result.markdown,
             metadata=enriched_meta,
-            assets=result.assets,
+            images=result.images,
         )
 
         self.cache.write(lookup.sha, result, options=req.options)

@@ -37,7 +37,7 @@ def _done_event(result: Any, fetch_meta: dict[str, Any] | None) -> Done:
     metadata = dict(result.metadata)
     if fetch_meta is not None:
         metadata = {**metadata, "fetch": fetch_meta, "input_kind": "url"}
-    return Done(markdown=result.markdown, metadata=metadata, assets=result.assets)
+    return Done(markdown=result.markdown, metadata=metadata, assets=[])
 
 
 async def _drain_until_done(q: asyncio.Queue, task: asyncio.Future) -> AsyncIterator[Progress]:

@@ -51,23 +51,16 @@ def test_result_minimal():
     r = ConversionResult(markdown="# x")
     assert r.markdown == "# x"
     assert r.metadata == {}
-    assert r.assets == []
-
-
-def test_result_with_metadata_and_assets():
-    r = ConversionResult(markdown="# x", metadata={"k": 1}, assets=["a.png"])
-    assert r.markdown == "# x"
-    assert r.metadata == {"k": 1}
-    assert r.assets == ["a.png"]
+    assert r.images == []
 
 
 def test_result_default_collections_are_per_instance():
     a = ConversionResult(markdown="a")
     b = ConversionResult(markdown="b")
     a.metadata["k"] = 1
-    a.assets.append("x")
+    a.images.append(ImageAsset(name="x.png", data=b"d", content_type="image/png"))
     assert b.metadata == {}
-    assert b.assets == []
+    assert b.images == []
 
 
 class _DummyConverter:

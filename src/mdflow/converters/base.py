@@ -52,7 +52,6 @@ class ConversionResult:
 
     markdown: str
     metadata: dict[str, Any] = field(default_factory=dict)
-    assets: list[str] = field(default_factory=list)  # DEPRECATED, removed in Task 9
     images: list[ImageAsset] = field(default_factory=list)
 
 
