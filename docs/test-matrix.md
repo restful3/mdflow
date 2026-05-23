@@ -43,7 +43,39 @@
 | CLI (`mdflow convert`/`serve`) | `tests/test_cli.py` (`typer.testing.CliRunner`) |
 | Dockerfile (CPU) | pytest 비대상 — `docker build --check` 통과(경고 0). 전체 빌드/실행 검증은 별도 환경 후속 |
 
+## GPU install (M2b)
+
+`[gpu]` extra는 `marker-pdf>=1.0`과 `torch>=2.4`를 선언하지만, 일반 PyPI resolver는 marker-pdf 1.10.x의 `torch>=2.7` 요구로 CUDA 13 wheel을 가져올 수 있다. driver가 CUDA 12.x만 지원하는 호스트(예: NVIDIA driver 12.6)에서는 `"NVIDIA driver too old"`로 inference가 막힌다.
+
+권장 절차 (CUDA 12.x driver 호스트):
+
+```bash
+# 1) Marker + 의존성 설치 (PyPI 기본 채널)
+.venv/bin/pip install '.[gpu]'
+
+# 2) torch를 driver 호환 wheel(cu124)로 강제 재설치
+.venv/bin/pip install --index-url https://download.pytorch.org/whl/cu124 \
+  --force-reinstall 'torch==2.6.0+cu124'
+
+# 3) 검증
+.venv/bin/python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+# 기대: 2.6.0+cu124 True
+
+.venv/bin/pytest -m gpu -v
+# 기대: tests/converters/test_marker.py::test_marker_real_gpu_smoke PASS
+#       tests/api/test_convert.py::test_convert_sse_routes_pdf_through_marker_when_gpu_enabled PASS
+```
+
+`pip`은 `"marker-pdf 1.10.2 requires torch<3.0.0,>=2.7.0, but you have torch 2.6.0+cu124"` 경고를 띄우지만 실 import/inference는 통과한다(이 호스트 RTX 3060 12GB로 검증). marker-pdf 안정 채널이 driver를 따라잡거나 호스트 driver를 12.8+로 업그레이드할 때까지 핀 유지.
+
+## GPU 동시 실행 정책 (M2b)
+
+- **HTTP `/convert`**: `requires_gpu=True` 컨버터는 `gpu_semaphore(1)`로 직렬화(M2a). VRAM 1-모델-1-프로세스 불변식 강제.
+- **HTTP-mounted MCP `/mcp`**: 같은 FastAPI 프로세스에서 `gpu_semaphore`를 우회할 수 있어 `build_mcp(allow_gpu=False)`로 MarkerConverter를 등록 자체에서 제외 — PDF는 PyMuPDF로 처리(Codex M2b 차단 fix).
+- **stdio MCP (`mdflow-mcp`)**: 별도 프로세스. GPU 허용(opt-in). 단, 같은 호스트에서 HTTP 서버와 동시에 GPU를 호출하지는 말 것.
+- **CLI (`mdflow convert`)**: 별도 프로세스이며 `ConversionService.convert`를 직접 호출 — in-process semaphore 공유 불가. **서버(`mdflow serve`)가 GPU 변환 중일 때 CLI로 GPU 변환을 동시에 돌리지 말 것.** v1은 운영 정책으로 분리.
+
 ## 후속 (M2b 완료 시 추가 검토)
 
 - GPU Docker 이미지/태그 분기 (현재는 CPU 단일 이미지).
-- MCP/CLI GPU 직렬화 — 두 transport는 현재 별도 runtime을 쓰며 `gpu_semaphore` 게이팅을 거치지 않음 (SSE 경로만 적용). 필요 시 별도 슬라이스.
+- CLI `--gpu` opt-in 플래그 / 서버-CLI 간 GPU lockfile 등 동시 실행 방지 메커니즘 (현재는 운영 문서로만 분리).

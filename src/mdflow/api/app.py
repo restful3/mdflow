@@ -67,7 +67,11 @@ def create_app() -> FastAPI:
     # allow_path=False: the HTTP-mounted MCP must not expose convert_file(path=)
     # arbitrary server-local file reads (Codex M4 blocking). stdio (mdflow-mcp)
     # keeps path for local-client convenience.
-    mcp_app = build_mcp(allow_path=False).http_app(path="/")
+    # allow_gpu=False: the HTTP-mounted MCP must not register MarkerConverter
+    # — /convert's gpu_semaphore would otherwise be bypassed by concurrent
+    # /mcp Marker calls in the same process (Codex M2b blocking). stdio MCP
+    # is a separate process and keeps GPU access.
+    mcp_app = build_mcp(allow_path=False, allow_gpu=False).http_app(path="/")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

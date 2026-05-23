@@ -34,9 +34,23 @@ class Runtime:
     allow_path: bool = True
 
 
-def build_mcp(settings: Settings | None = None, *, allow_path: bool = True) -> FastMCP:
+def build_mcp(
+    settings: Settings | None = None,
+    *,
+    allow_path: bool = True,
+    allow_gpu: bool = True,
+) -> FastMCP:
+    """Build the MCP server (stdio or HTTP-mountable).
+
+    `allow_gpu=False` excludes GPU-requiring converters (currently
+    MarkerConverter) from the runtime registry. The HTTP-mount in
+    create_app() passes allow_gpu=False so the mounted /mcp cannot run
+    Marker concurrently with /convert in the same FastAPI process —
+    the SSE path's `gpu_semaphore` would otherwise be bypassed
+    (Codex M2b blocking).
+    """
     settings = settings or Settings()
-    registry = build_registry(settings)
+    registry = build_registry(settings, allow_gpu=allow_gpu)
     cache = Cache(settings.cache_dir)
     runtime = Runtime(
         settings=settings,

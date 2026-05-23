@@ -34,22 +34,29 @@ def _force_cpu() -> bool:
 
 
 def _cuda_available() -> bool:
+    # Broad Exception (not just ImportError): a broken torch wheel, a
+    # missing CUDA shared library, or transitive-init failure can raise
+    # OSError/RuntimeError. Registry.select() does not catch can_handle()
+    # exceptions, so any leak here surfaces as an SSE INTERNAL error
+    # instead of the intended fallback to PyMuPDF.
     try:
         import torch  # type: ignore[import-not-found]
-    except ImportError:
-        return False
-    try:
+
         return bool(torch.cuda.is_available())
     except Exception:
         return False
 
 
 def _marker_available() -> bool:
+    # Broad Exception — see _cuda_available() above. marker-pdf pulls
+    # in surya-ocr / pydantic-settings; their init can raise non-ImportError
+    # exceptions on an inconsistent environment.
     try:
         import marker  # type: ignore[import-not-found]  # noqa: F401
-    except ImportError:
+
+        return True
+    except Exception:
         return False
-    return True
 
 
 # ----- pipeline helpers (monkeypatched in tests) ---------------------------
@@ -106,6 +113,7 @@ class MarkerConverter:
     def convert(self, ctx: ConversionContext, progress: ProgressCallback) -> ConversionResult:
         progress("load", 5)
         models = None
+        tmp: Path | None = None
         try:
             models = _load_models()
             progress("parse", 20)
@@ -117,7 +125,8 @@ class MarkerConverter:
                 rendered = _marker_convert(tmp, models)
                 text, _, _images = _text_from_rendered(rendered)
             finally:
-                tmp.unlink(missing_ok=True)
+                if tmp is not None:
+                    tmp.unlink(missing_ok=True)
             pages = len(getattr(rendered, "metadata", {}).get("page_stats", []))
             progress("done", 100)
             return ConversionResult(

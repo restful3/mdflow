@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mdflow.api.app import create_app
-from tests.conftest import requires_soffice
+from tests.conftest import requires_gpu_runtime, requires_soffice
 from tests.golden import assert_golden
 
 
@@ -369,6 +369,27 @@ def test_convert_corrupted_pdf_streams_conversion_failed():
     by_event, kinds = _run_convert("broken.pdf", b"not a real pdf at all", "application/pdf")
     assert kinds[-1] == "error"
     assert by_event["error"]["code"] == "CONVERSION_FAILED"
+
+
+@pytest.mark.gpu
+@requires_gpu_runtime
+def test_convert_sse_routes_pdf_through_marker_when_gpu_enabled(monkeypatch, sample_pdf_bytes):
+    """End-to-end SSE: when MDFLOW_FORCE_CPU is unset, /convert selects
+    pdf-marker (first-wins ahead of pdf-pymupdf4llm) and the GPU branch
+    streams started.gpu=True via gpu_semaphore (Codex M2b rec 4)."""
+    monkeypatch.delenv("MDFLOW_FORCE_CPU", raising=False)
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.post(
+            "/convert",
+            files={"file": ("a.pdf", sample_pdf_bytes, "application/pdf")},
+        )
+    events = _parse_sse(r.text)
+    by_event = dict(events)
+    kinds = [e[0] for e in events]
+    assert by_event["started"]["converter"] == "pdf-marker"
+    assert by_event["started"]["gpu"] is True
+    assert kinds[-1] == "done"
 
 
 class _BoomGpuConverter:

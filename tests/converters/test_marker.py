@@ -70,6 +70,35 @@ def test_can_handle_no_marker_blocks(monkeypatch):
     assert MarkerConverter().can_handle(_ctx()) is False
 
 
+def test_cuda_available_swallows_non_import_exceptions(monkeypatch):
+    """A broken torch wheel must fall back to False, not propagate."""
+    import sys
+
+    class _BrokenTorch:
+        class cuda:
+            @staticmethod
+            def is_available() -> bool:
+                raise RuntimeError("CUDA library mismatch")
+
+    monkeypatch.setitem(sys.modules, "torch", _BrokenTorch)
+    assert marker_mod._cuda_available() is False
+
+
+def test_marker_available_swallows_non_import_exceptions(monkeypatch):
+    """A broken marker transitive init must fall back to False."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _import(name, *args, **kwargs):
+        if name == "marker":
+            raise OSError("transitive init failed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _import)
+    assert marker_mod._marker_available() is False
+
+
 # --- convert() with stubbed marker pipeline ---------------------------------
 
 
@@ -155,6 +184,21 @@ def test_convert_propagates_load_errors(monkeypatch):
     with pytest.raises(ImportError):
         MarkerConverter().convert(_ctx(), lambda s, p: None)
     # cleanup still runs because finally guards the whole try block
+    assert state["cleanup"] == 1
+
+
+def test_convert_tempfile_failure_does_not_mask_original_error(monkeypatch):
+    """NamedTemporaryFile/write failure must not be hidden by an
+    UnboundLocalError in the unlink cleanup."""
+    state = _patch_marker_pipeline(monkeypatch)
+
+    def _boom_tempfile(*args, **kwargs):
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(marker_mod.tempfile, "NamedTemporaryFile", _boom_tempfile)
+    with pytest.raises(OSError, match="no space left"):
+        MarkerConverter().convert(_ctx(), lambda s, p: None)
+    # outer finally still runs even though tmp was never assigned
     assert state["cleanup"] == 1
 
 
