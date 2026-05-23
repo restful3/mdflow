@@ -1,47 +1,75 @@
-# 세션 핸드오프 — mdflow M2 (PDF) 완료, M2b는 GPU 대기
-_최종 갱신: 2026-05-22 18:30_
+# 세션 핸드오프 — mdflow M3b→M4→M5 완료, 잔여 M2b(GPU)
+
+_최종 갱신: 2026-05-23 07:55_
 
 ## 🎯 목표
-mdflow에 문서→Markdown 컨버터를 마일스톤 단위로 추가. 이번 세션은 M1b 마무리 → **M2a(PDF CPU + GPU 라우팅 배관) 구현·Codex 승인·태그**까지 완료. M2b(Marker GPU)는 이 호스트에 GPU가 없어 보류.
+mdflow에 문서→Markdown 컨버터/서버를 마일스톤 단위로 추가. 이번 세션은 사용자 요청 "M2b 빼고 차례대로 실행"에 따라 **M3b(HWP) → M4(MCP) → M5(운영 도구)** 를 spec→plan→TDD 구현→Codex 묶음 리뷰→채택→태그 사이클로 전부 완료.
 
 ## ✅ 완료 (이번 세션)
-- **M1b** 사무 컨버터 4종 + 골든 하니스 — Codex 차단 0, 권고 3건 반영(M1b-harden), 태그 **`v0.1.0-m1b`**
-- **M2a** PDF: `pdf-pymupdf4llm` 컨버터(`pymupdf4llm`, core 의존) + `convert.py` GPU dispatch(`_run_conversion_stream` 추출 + `gpu_lock`+`queued`, fake-GPU로 검증) + 등록 + PDF/손상/GPU-error/disconnect/cached-hit SSE 테스트
-  - opus holistic → ready-to-ship. **Codex 1차: 차단 1건 → 수정(`ca299ec`) → round-2 `===CODEX_FINAL_APPROVAL===`**. 채택.
-  - 태그 **`v0.2.0-m2a`** (@`1859d86`). **240 passed / 1 skipped**, ruff clean. 트리 깨끗.
-- **M2b kickoff(.agent_io/Tori)** 처리 → host-independent 체크포인트 작성, GPU 블로커 명시(no commit)
+
+**모든 변경은 commit·태그·원격(`github.com/restful3/mdflow`) push 완료.** `master == origin/master` 동기 (`3c89fea`).
+
+- **M3b** HWP 5.0 컨버터 — `v0.4.0-m3b`
+  - `hwp-pyhwp`(`src/mdflow/converters/hwp.py`): `pyhwp` in-process(`Hwp5File` + `HTMLTransform.transform_hwp5_to_xhtml`) → `_html_to_md`(strip_images). 신규 `HWP_UNAVAILABLE` 에러코드, `[hwp]` optional extra(pyhwp, AGPL).
+  - **Codex 차단 0건**, 권고 1·3 반영(HWP 전용 SSE 에러 테스트 + AGPL 노트), 2 보류(import-hook, optional).
+- **M4** MCP 서버(FastMCP 3.3.1) — `v0.5.0-m4`
+  - `mdflow.runtime.composition: build_registry`로 HTTP/MCP 컨버터 등록 단일화(드리프트 방지). `mdflow.mcp.{server,tools}`: `build_mcp(allow_path=True|False)` + 4 tool(`convert_file`/`convert_url`/`list_formats`/`get_cached`). stdio entrypoint `mdflow-mcp` + Streamable HTTP `/mcp` 마운트(`http_app(path="/") + mount("/mcp")`, lifespan 결합). 진행 브리지 `run_coroutine_threadsafe(ctx.report_progress)` + future 예외 소비.
+  - **Codex 차단 1건 → FIXED**: HTTP `/mcp`의 `convert_file(path=)` 임의 서버-로컬 파일 읽기 → `build_mcp(allow_path=False)`로 HTTP는 path 거부, stdio만 허용. **재리뷰 `===CODEX_FINAL_APPROVAL===`**. 권고 2·3(bounded pool, executor 오프로드) DEFER.
+- **M5** 운영 도구 — `v0.6.0-m5`
+  - **CLI**(Typer, `src/mdflow/cli.py`): `mdflow convert <file|--url> [-o]`(동기 1회 변환, composition 재사용) + `mdflow serve`(uvicorn). `[project.scripts] mdflow`. ruff B008 per-file-ignore.
+  - **메트릭**(`src/mdflow/core/metrics.py: Metrics`): `/convert` 스트림을 `_metered` 래퍼로 감싸 terminal SSE 이벤트(`event: done`/`event: error`) 단일 지점 기록. `/capabilities`에 `metrics` 키(requests/failures/failure_rate/avg_latency_ms + cache_hit_rate 파생). HTTP `/convert` 경로만 집계(MCP 별도 runtime은 비집계).
+  - **Dockerfile** (CPU 전용, `python:3.12-slim` + LibreOffice + fonts-noto-cjk + `.[hwp]`): `docker build --check` 통과(경고 0). 전체 빌드 검증은 별도 환경 후속.
+  - **테스트 매트릭스 문서** `docs/test-matrix.md`: 포맷×CPU×OS deps×marker 표, GPU(`pdf-marker`) 행은 M2b 보류 명시.
+  - **Codex 차단 0건**, 권고 1·2·3 반영(CLI output-write OSError 처리, Metrics docstring "best-effort/eventually-consistent" 완화 + `requests`는 stream 도달 시도만 집계 명시), 4(CLI size cap) DEFER(로컬 도구).
+
+**테스트/린트**: 287 passed / 2 skipped (hwp 실제 fixture 부재 + url redirect step5), ruff clean.
 
 ## 🔄 진행 중
-- 없음 (M2a 닫힘). M2b는 GPU 호스트 대기 상태로 **차단**.
+없음. 이번 세션은 모든 합의된 작업을 commit·태그·push까지 마쳤다.
 
 ## ⏭️ 다음 단계
-1. **M2b (Marker GPU) — CUDA GPU 호스트에서 실행**. 슬라이스 계획은 `.agent_io/claude/output.md`(이번 턴 체크포인트)에 순서대로 있음:
-   ① `[gpu]` extras(`marker-pdf`,`torch`) 추가 → GPU 호스트 `pip install -e ".[gpu]"` → `torch.cuda.is_available()`/`import marker` 확인
-   ② `pdf-marker` 컨버터(`requires_gpu=True`, `can_handle` GPU 게이팅, PyMuPDF **앞에** 등록, VRAM 정리 `del model;gc.collect();torch.cuda.empty_cache()`, §6 자체 try/except 금지)
-   ③ CPU에서도 가능한 검증: GPU 없으면 `can_handle` False → pdf가 `pdf-pymupdf4llm`로 폴백. GPU 호스트: 골든 + `/convert` SSE, M2a `gpu_lock`/`queued` 분기에서 실행 확인
-   ④ Codex 묶음 리뷰 → 태그(`v0.3.0-m2b`)
-2. 대안: **M3** (LibreOffice → PDF 폴백, doc/ppt/hwp) — GPU 불필요, 이 호스트에서 진행 가능.
-3. 또는 M1 hardening 잔여(cache 동시성/lifecycle, disconnect 취소 정책, URL temp streaming, language_hint).
+사용자 결정 필요. 가능한 다음 작업:
+1. **M2b (Marker, GPU)** — 보류 중. GPU 호스트(torch + CUDA) 확보 후: `[gpu]` extra(`marker-pdf`+`torch`) 추가, `pdf-marker`(`requires_gpu=True`, `can_handle`에서 GPU 게이팅, PyMuPDF 앞 등록), PaperFlow VRAM 정리 패턴(`del model; gc.collect(); torch.cuda.empty_cache()`), SSE/MCP **GPU 직렬화 공통 재설계**(현재 `gpu_semaphore`는 SSE에만, MCP는 M2b 합류 시 같이). GPU Dockerfile 분기/별도 태그.
+2. **M5 DEFER 후속 hardening** (선택):
+   - MCP `_run`이 default executor를 써 HTTP `/convert`의 `ConcurrencyPool.cpu_executor` 제한 우회 → bounded executor 주입.
+   - MCP의 `convert_file(path)` read와 `get_cached` cache.read를 executor로 오프로드.
+   - CLI에 `MDFLOW_MAX_INPUT_MB` cap 옵션화(세 transport 계약 통일이 필요하면).
+3. **README 신설**(없음). pyproject `readme` 키와 함께. `[hwp]` extra의 AGPL 노트는 spec에 있으나 README에 옮기는 것을 Codex가 권고.
 
 ## 🧠 대화에만 있던 핵심 컨텍스트
-- **결정 (M2a GPU 세마포어 해제)**: GPU 세마포어를 변환 **task의 done-callback**으로 해제(제너레이터 scope 아님). 이유: client disconnect 시 제너레이터가 닫혀도 ThreadPoolExecutor 변환은 취소 안 되고 계속 도는데, scope 해제면 세마포어가 작업보다 먼저 풀려 두 번째 GPU 변환이 동시 진입 → VRAM 직렬화 붕괴. Codex가 1차에서 이 차단을 잡음(holistic 리뷰는 놓침). `_run_conversion_stream`은 이제 **이미 생성된 task**를 받음.
-- **발견 (테스트 하니스)**: httpx `ASGITransport`는 응답을 **버퍼링**해 mid-flight 상태 관찰 불가 → disconnect 회귀 테스트는 **raw ASGI**로 직접 구동(body 주입 → 첫 청크 후 `http.disconnect`). 이 테스트는 구버전(scope 해제)에서 fail함을 실증해 차별성 확인됨.
-- **결정 (fallback chain, Codex #11)**: 별도 체인 실행기/런타임 에러폴백 안 만듦. 능력 게이팅(`can_handle`) + 등록 순서로 해소(Marker가 GPU 게이팅, PyMuPDF 앞에 등록 → first-wins가 곧 자동 분기). §6(예외 삼킴 금지)와 충돌하는 에러폴백은 비목표.
-- **배제**: 이 호스트에서 Marker 코드 작성 — marker API를 import/테스트할 수 없어 추측성 코드가 되므로 작성 안 함(체크포인트만). torch/marker/CUDA 전부 부재.
-- **⚠️ `.agent_io` 파일-IPC 채널 (Tori 오케스트레이터)**: 다른 tmux 세션/에이전트("Tori")가 `.agent_io/claude/input.md`로 작업을 큐잉, 나는 `output.md`+`status.json`에 체크포인트를 씀(README는 `.agent_io/README.md`). **세션 초반엔 STALE 루프**(M0 시절 권고 #4/#5/#6 재발화)가 5분마다 반복됐고 사용자가 오케스트레이터를 중단시킴. **현재 input.md는 진짜 M2b kickoff**(`updated_at` 신선, summary "M2b kickoff queued by Tori"). 다음 세션: input.md를 **다시 읽고 mtime/summary로 신선도 확인** 후 처리 — stale면 재적용 금지.
+모든 결정 근거는 commit·spec·`docs/reviews/`에 영구 저장됨. 메타-수준 요점만:
+
+- **M3b 평가의 핵심 정정**: 초기 사용자 선택은 "pyhwp + xsltproc"였으나 실증 결과 (a) LibreOffice는 HWP 5.0(OLE/CFB) 변환 **불가**(번들 필터 HWP 3.0 전용, 실제 파일 거부), (b) **xsltproc 불필요** — `hwp5.plat.get_xslt()`가 lxml(기존 스택)을 우선 선택, `PYHWP_XSLTPROC` 환경변수를 줘도 백엔드가 안 바뀜. 따라서 "pyhwp + lxml in-process"로 단순화. 실제 hwp 10개 중 8개 성공, 2개(영수증 서식)는 pyhwp 내부 XML 생성 실패 → `CONVERSION_FAILED`로 안전 표면화.
+- **MIT/AGPL 격리**: mdflow는 MIT, pyhwp는 AGPL. pyhwp는 optional `[hwp]` extra로 격리, AGPL 샘플 `.hwp`는 리포에 미커밋. happy-path는 `HwpConverter._hwp_to_xhtml` monkeypatch + `sys.modules` 차단으로 CI 결정적 검증, 실제 변환은 로컬 `tests/fixtures/hwp/sample.hwp` 있을 때만(skip-if-absent).
+- **M4 차단 패턴**: 같은 tool을 두 transport로 노출할 때 보안 모델이 다르면(`stdio` = 로컬 신뢰 vs HTTP = 무인증 외부) 동일 코드 노출은 위험. `allow_path` 플래그로 transport별 게이팅한 `Runtime` 패턴은 향후 다른 권한-민감 tool(예: 파일 쓰기)에도 같은 방식 적용 가능.
+- **M5 `_metered` 설계**: 기존 `stream()` 내부 5개 분기(fetch/lookup/cached/run-error/run-done)를 안 건드리고 라우트에서 SSE 청크 prefix(`event: done|error`)만 관찰하는 wrapper로 단일 기록 지점 달성. cached→done 경로는 done으로 집계. 클라이언트 disconnect는 terminal 이벤트 없이 generator가 닫혀 finally에서 보수적으로 failure 집계.
+- **GPU 직렬화 미적용 결정**: M2b 보류로 `requires_gpu=True` 컨버터가 등록돼 있지 않음. MCP/CLI 모두 `gpu_semaphore` 게이팅을 추가하지 않음(직렬화 대상 없음 — YAGNI). M2b 합류 시 SSE+MCP 공통 재설계.
+- **Codex 워크플로**: 각 milestone 끝에 차단 0이면 단일 round, 차단 있으면 (fix → 재리뷰 → `===CODEX_FINAL_APPROVAL===`) 2 round. 이번 세션은 M3b(0/1라운드), M4(1/2라운드), M5(0/1라운드).
 
 ## ⚠️ 클리어 전 주의
-- **커밋 안 됨**: 없음. 트리 깨끗(`git status` empty). M2a 전부 커밋·태그됨. `.agent_io/claude/{output.md,status.json}`는 gitignored 채널 파일(커밋 대상 아님) — 이번 턴 M2b 체크포인트로 갱신됨.
-- **백그라운드**: tmux 세션 `md`의 `codex` 윈도우(window 2)에 Codex CLI 실행 중(Context ~63%). `/clear`로 안 사라짐 — `tmux select-window -t md:codex`. Codex 폴링 백그라운드 태스크는 모두 종료. 활성 백그라운드 Bash 없음.
-- **미완료 todo**: 없음.
+- **커밋 안 됨**: `M HANDOFF.md`만(이번 갱신). 이 파일 외 작업은 모두 commit + push 완료. **이 핸드오프 자체는 커밋 안 한 채로 두는 게 일반적**(다음 세션에서 같은 파일을 다시 덮어쓰므로).
+- **백그라운드**: 없음. 이번 세션의 background 폴링/태스크는 모두 완료. 단, **`md:codex` tmux 윈도우의 codex CLI는 계속 실행 중**(Context 32% 정도, 5h 96% / weekly 89%). 다음 세션에서 codex 리뷰가 필요하면 그대로 재사용 가능.
+- **미완료 todo**: 없음 (이번 세션의 task #1\~13 모두 completed).
+- **원격 동기**: `master == origin/master = 3c89fea`. 태그 7개 모두 원격에 있음(`v0.0.1-m0` ... `v0.6.0-m5`).
 
 ## 📂 관련 파일
-- `PROCESS_STATE.md` — **정본 상태**. §2 한눈에 보기 + §8(M2): M2a DONE/채택, M2b PENDING(GPU 호스트 필요). 정확·최신.
-- `.agent_io/claude/output.md` — **이번 턴 M2b 체크포인트**(스코프·블로커·GPU-호스트 슬라이스 순서). M2b 시작 시 먼저 읽을 것.
-- `.agent_io/claude/{input.md,status.json}` — Tori 채널(input=큐된 지시, status=`blocked`/needs GPU host). gitignored.
-- `docs/specs/2026-05-22-m2-pdf-design.md` — M2 설계(§10에 M2b 노트). `docs/superpowers/plans/2026-05-22-m2-pdf.md` — M2a 계획.
-- `docs/reviews/2026-05-22-m2-pdf-codex.md` — M2a Codex 리뷰(차단 1건 + 권고 3). (round-2는 승인토큰만, 파일 없음)
-- `src/mdflow/api/convert.py` — SSE 핸들러. `_run_conversion_stream`(task 받음) + GPU 분기(acquire→task→done-callback release→queued). M2b Marker가 이 분기에 드롭인.
-- `src/mdflow/converters/pdf.py` — `pdf-pymupdf4llm`. `app.py` lifespan에 컨버터 등록(M2b는 `pdf-marker`를 PyMuPDF 앞에 추가).
-- `src/mdflow/runtime/{capabilities,concurrency}.py` — GPU detect + `gpu_semaphore`/`gpu_lock`(gpu_lock은 현재 convert.py 미사용, 잔존 인프라).
-- `CLAUDE.md` — 운영 규칙(작은 슬라이스, Codex milestone 리뷰, 수술적 변경, §6 예외 전파).
+
+상태 정본:
+- `PROCESS_STATE.md` — §2 한눈에 보기 / §4 로드맵 / §9\~§11(M3·M4·M5 상세) 모두 갱신. 다음 세션 첫 읽기 대상.
+
+이번 세션의 설계/계획/리뷰 산출물 (commit됨):
+- `docs/specs/2026-05-22-m3b-hwp-design.md`, `docs/superpowers/plans/2026-05-22-m3b-hwp.md`
+- `docs/specs/2026-05-22-m4-mcp-design.md`, `docs/superpowers/plans/2026-05-22-m4-mcp.md`
+- `docs/specs/2026-05-23-m5-ops-tooling-design.md`, `docs/superpowers/plans/2026-05-23-m5-ops-tooling.md`
+- `docs/reviews/2026-05-22-m3b-hwp-codex.md`
+- `docs/reviews/2026-05-22-m4-mcp-codex.md` (+ 재리뷰는 화면 `===CODEX_FINAL_APPROVAL===`, round2 파일 없음 = 승인)
+- `docs/reviews/2026-05-23-m5-ops-tooling-codex.md`
+- `docs/test-matrix.md`
+
+신규 소스 (commit됨):
+- `src/mdflow/converters/hwp.py`(M3b), `src/mdflow/runtime/composition.py`(M4), `src/mdflow/mcp/{server,tools}.py`(M4), `src/mdflow/cli.py`(M5), `src/mdflow/core/metrics.py`(M5), `Dockerfile`+`.dockerignore`(M5)
+
+핵심 진입점:
+- HTTP: `mdflow.api.app:create_app` (lifespan이 build_registry + Metrics + /mcp 마운트 결합)
+- stdio MCP: `mdflow-mcp` = `mdflow.mcp.server:main`
+- CLI: `mdflow` = `mdflow.cli:app` (convert, serve)
