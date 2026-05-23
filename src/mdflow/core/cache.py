@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -208,6 +209,47 @@ class Cache:
             metadata=meta.get("metadata", {}),
             images=images,
         )
+
+    def build_bundle(self, sha: str) -> Path | None:
+        """Lazy-build entry_dir/bundle.zip for mode=zip responses.
+
+        Returns:
+            None — cache miss, or canonical entry has zero images.
+            Path — existing or newly built bundle.zip.
+
+        Compression: ZIP_STORED (images already compressed; markdown is tiny).
+        Concurrency: first-writer-wins (same as existing cache write semantics).
+        """
+        entry = self._entry_dir(sha)
+        if not entry.exists():
+            return None
+        figs = entry / "figs"
+        if not figs.exists() or not any(figs.iterdir()):
+            return None
+        bundle = entry / "bundle.zip"
+        if bundle.exists():
+            return bundle
+        tmp: Path | None = None
+        try:
+            fd, tmp_name = tempfile.mkstemp(
+                prefix=".tmp-bundle-", suffix=".zip", dir=str(entry)
+            )
+            os.close(fd)
+            tmp = Path(tmp_name)
+            with zipfile.ZipFile(tmp, mode="w", compression=zipfile.ZIP_STORED) as zf:
+                zf.write(entry / "result.md", arcname="paper.md")
+                zf.write(entry / "meta.json", arcname="meta.json")
+                for img_path in sorted(figs.iterdir()):
+                    zf.write(img_path, arcname=f"figs/{img_path.name}")
+            os.replace(tmp, bundle)
+            return bundle
+        except OSError as e:
+            if tmp is not None and tmp.exists():
+                tmp.unlink(missing_ok=True)
+            raise MdflowError(
+                ErrorCode.CACHE_IO_ERROR,
+                f"bundle build for {sha} failed: {e}",
+            ) from e
 
     def read(self, sha: str) -> ConversionResult | None:
         entry = self._entry_dir(sha)

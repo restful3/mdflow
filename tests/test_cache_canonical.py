@@ -1,4 +1,5 @@
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -142,3 +143,62 @@ def test_read_canonical_missing_image_bytes_raises(cache, tmp_path):
     with pytest.raises(MdflowError) as exc:
         cache.read_canonical(sha)
     assert exc.value.code is ErrorCode.CACHE_IO_ERROR
+
+
+def test_build_bundle_with_images_creates_zip(cache, tmp_path):
+    sha = "4" + "0" * 63
+    img = make_image_asset(b"image-bytes", "image/png")
+    r = ConversionResult(
+        markdown=f"![](figs/{img.name})",
+        metadata={"x": 1},
+        images=[img],
+    )
+    cache.write_canonical(sha, r, options={})
+    bundle = cache.build_bundle(sha)
+    assert bundle is not None
+    assert bundle.exists()
+    assert bundle.name == "bundle.zip"
+    with zipfile.ZipFile(bundle) as zf:
+        names = set(zf.namelist())
+        assert "paper.md" in names
+        assert "meta.json" in names
+        assert f"figs/{img.name}" in names
+        assert zf.read(f"figs/{img.name}") == b"image-bytes"
+        assert zf.read("paper.md").decode() == r.markdown
+
+
+def test_build_bundle_no_images_returns_none(cache, tmp_path):
+    sha = "5" + "0" * 63
+    r = ConversionResult(markdown="plain", metadata={}, images=[])
+    cache.write_canonical(sha, r, options={})
+    assert cache.build_bundle(sha) is None
+
+
+def test_build_bundle_idempotent_does_not_rebuild(cache, tmp_path):
+    sha = "6" + "0" * 63
+    img = make_image_asset(b"x", "image/png")
+    r = ConversionResult(markdown=f"![](figs/{img.name})", metadata={}, images=[img])
+    cache.write_canonical(sha, r, options={})
+    first = cache.build_bundle(sha)
+    assert first is not None
+    mtime1 = first.stat().st_mtime_ns
+    import time
+    time.sleep(0.01)
+    second = cache.build_bundle(sha)
+    assert second == first
+    assert second.stat().st_mtime_ns == mtime1
+
+
+def test_build_bundle_cache_miss_returns_none(cache):
+    assert cache.build_bundle("7" + "0" * 63) is None
+
+
+def test_build_bundle_uses_stored_compression(cache, tmp_path):
+    sha = "8" + "0" * 63
+    img = make_image_asset(b"compressible-bytes" * 100, "image/png")
+    r = ConversionResult(markdown=f"![](figs/{img.name})", metadata={}, images=[img])
+    cache.write_canonical(sha, r, options={})
+    bundle = cache.build_bundle(sha)
+    with zipfile.ZipFile(bundle) as zf:
+        info = zf.getinfo(f"figs/{img.name}")
+        assert info.compress_type == zipfile.ZIP_STORED
