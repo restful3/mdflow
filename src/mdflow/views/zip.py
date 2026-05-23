@@ -12,8 +12,6 @@ from pathlib import Path
 from mdflow.core.cache import Cache
 
 
-def synthesize(
-    canonical_md: str, cache: Cache, sha: str
-) -> tuple[str, Path | None]:
+def synthesize(canonical_md: str, cache: Cache, sha: str) -> tuple[str, Path | None]:
     bundle = cache.build_bundle(sha)
     return canonical_md, bundle

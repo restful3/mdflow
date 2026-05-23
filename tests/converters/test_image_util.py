@@ -62,6 +62,14 @@ def test_canonical_ref_no_alt_defaults_to_empty():
 
 def test_ext_by_ct_covers_spec_minimum():
     # spec §7.1 enumerates these — exact set guarded
-    expected = {"image/png", "image/jpeg", "image/jpg", "image/gif",
-                "image/svg+xml", "image/webp", "image/bmp", "image/tiff"}
+    expected = {
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/gif",
+        "image/svg+xml",
+        "image/webp",
+        "image/bmp",
+        "image/tiff",
+    }
     assert expected.issubset(EXT_BY_CT.keys())

@@ -65,6 +65,7 @@ def test_write_canonical_dedupes_same_sha(cache, tmp_path):
 def test_write_canonical_oserror_wrapped_and_tmp_cleaned(cache, tmp_path, monkeypatch):
     def boom(*args, **kwargs):
         raise OSError("fake replace failure")
+
     monkeypatch.setattr("mdflow.core.cache.os.replace", boom)
     sha = "d" * 64
     r = ConversionResult(markdown="x", metadata={}, images=[])
@@ -104,12 +105,16 @@ def test_read_canonical_legacy_no_figs_meta_assets_returns_empty_images(cache, t
     entry = tmp_path / sha
     entry.mkdir()
     (entry / "result.md").write_text("legacy markdown")
-    (entry / "meta.json").write_text(json.dumps({
-        "sha256": sha,
-        "options": {},
-        "metadata": {"converter": "old"},
-        "assets": [],  # legacy field
-    }))
+    (entry / "meta.json").write_text(
+        json.dumps(
+            {
+                "sha256": sha,
+                "options": {},
+                "metadata": {"converter": "old"},
+                "assets": [],  # legacy field
+            }
+        )
+    )
     got = cache.read(sha)
     assert got is not None
     assert got.markdown == "legacy markdown"
@@ -133,12 +138,16 @@ def test_read_canonical_missing_image_bytes_raises(cache, tmp_path):
     entry = tmp_path / sha
     entry.mkdir()
     (entry / "result.md").write_text("![](figs/x.png)")
-    (entry / "meta.json").write_text(json.dumps({
-        "sha256": sha,
-        "options": {},
-        "metadata": {},
-        "images": [{"name": "x.png", "content_type": "image/png"}],
-    }))
+    (entry / "meta.json").write_text(
+        json.dumps(
+            {
+                "sha256": sha,
+                "options": {},
+                "metadata": {},
+                "images": [{"name": "x.png", "content_type": "image/png"}],
+            }
+        )
+    )
     # figs/x.png is missing
     with pytest.raises(MdflowError) as exc:
         cache.read(sha)
@@ -183,6 +192,7 @@ def test_build_bundle_idempotent_does_not_rebuild(cache, tmp_path):
     assert first is not None
     mtime1 = first.stat().st_mtime_ns
     import time
+
     time.sleep(0.01)
     second = cache.build_bundle(sha)
     assert second == first

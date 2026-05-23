@@ -114,8 +114,7 @@ class Cache:
                 "options": options,
                 "metadata": result.metadata,
                 "images": [
-                    {"name": img.name, "content_type": img.content_type}
-                    for img in unique_images
+                    {"name": img.name, "content_type": img.content_type} for img in unique_images
                 ],
             }
             (tmp / "meta.json").write_text(
@@ -210,9 +209,7 @@ class Cache:
             return bundle
         tmp: Path | None = None
         try:
-            fd, tmp_name = tempfile.mkstemp(
-                prefix=".tmp-bundle-", suffix=".zip", dir=str(entry)
-            )
+            fd, tmp_name = tempfile.mkstemp(prefix=".tmp-bundle-", suffix=".zip", dir=str(entry))
             os.close(fd)
             tmp = Path(tmp_name)
             with zipfile.ZipFile(tmp, mode="w", compression=zipfile.ZIP_STORED) as zf:
