@@ -36,6 +36,7 @@ mdflow-mcp = "mdflow.mcp.server:main"
 
 [project.optional-dependencies]
 hwp = ["pyhwp"]
+gpu = ["marker-pdf>=1.0", "torch>=2.4"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

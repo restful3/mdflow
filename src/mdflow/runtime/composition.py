@@ -10,6 +10,7 @@ from __future__ import annotations
 from mdflow.converters.docx import DocxConverter
 from mdflow.converters.html import HtmlConverter
 from mdflow.converters.hwp import HwpConverter
+from mdflow.converters.marker import MarkerConverter
 from mdflow.converters.office import LibreOfficeConverter
 from mdflow.converters.pdf import PdfConverter
 from mdflow.converters.pptx import PptxConverter
@@ -28,6 +29,9 @@ def build_registry(settings: Settings) -> Registry:
     registry.register(PptxConverter())
     registry.register(XlsxConverter())
     registry.register(HtmlConverter())
+    # Marker(GPU) precedes PyMuPDF(CPU) for `pdf`; first-wins + can_handle
+    # gating routes to Marker only when GPU+marker-pdf are available.
+    registry.register(MarkerConverter())
     registry.register(PdfConverter())
     registry.register(LibreOfficeConverter(timeout_s=settings.soffice_timeout_s))
     registry.register(HwpConverter())

@@ -141,6 +141,42 @@ requires_soffice = pytest.mark.skipif(
 )
 
 
+def _gpu_runtime_unavailable() -> bool:
+    try:
+        import torch  # type: ignore[import-not-found]
+    except ImportError:
+        return True
+    try:
+        if not torch.cuda.is_available():
+            return True
+    except Exception:
+        return True
+    try:
+        import marker  # type: ignore[import-not-found]  # noqa: F401
+    except ImportError:
+        return True
+    return False
+
+
+requires_gpu_runtime = pytest.mark.skipif(
+    _gpu_runtime_unavailable(),
+    reason="torch+CUDA and marker-pdf required",
+)
+
+
+@pytest.fixture(autouse=True)
+def _force_cpu_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make registry dispatch deterministic regardless of host GPU.
+
+    Marker(GPU) is registered ahead of PyMuPDF(CPU); on a host with
+    torch+CUDA+marker-pdf installed, every PDF test would otherwise
+    route through Marker (slow, model download). Tests that want the
+    actual GPU branch (e.g. test_marker_real_gpu_smoke) opt back in
+    with monkeypatch.delenv.
+    """
+    monkeypatch.setenv("MDFLOW_FORCE_CPU", "1")
+
+
 def _soffice_to(src_bytes: bytes, src_ext: str, dst_ext: str) -> bytes:
     """Convert src_bytes (a src_ext document) to dst_ext via soffice headless.
 
